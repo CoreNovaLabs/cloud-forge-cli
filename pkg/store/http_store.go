@@ -151,7 +151,7 @@ func (s *HTTPStore) fetchIndex(ctx context.Context) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("store: fetch index: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("store: fetch index %s: HTTP %d", s.cfg.IndexURL, resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
 }
@@ -195,7 +195,7 @@ func (s *HTTPStore) fetchTemplate(ctx context.Context, ref TemplateRef) ([]byte,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("store: fetch template: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("store: fetch template %s: HTTP %d", templateURL, resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
 }
