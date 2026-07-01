@@ -72,4 +72,6 @@ type Config struct {
 	CacheDir string
 	// CacheTTL 索引缓存有效期
 	CacheTTL time.Duration
+	// HTTPTimeout controls remote index/template fetch timeout.
+	HTTPTimeout time.Duration
 }

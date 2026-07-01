@@ -15,15 +15,22 @@ import (
 
 // HTTPStore 从远程或本地 file:// URL 拉取 catalog，并缓存到本地。
 type HTTPStore struct {
-	cfg     Config
-	catalog *Catalog
+	cfg        Config
+	catalog    *Catalog
+	httpClient *http.Client
 }
 
 func NewHTTPStore(cfg Config) *HTTPStore {
 	if cfg.CacheTTL == 0 {
 		cfg.CacheTTL = 24 * time.Hour
 	}
-	return &HTTPStore{cfg: cfg}
+	if cfg.HTTPTimeout == 0 {
+		cfg.HTTPTimeout = 30 * time.Second
+	}
+	return &HTTPStore{
+		cfg:        cfg,
+		httpClient: &http.Client{Timeout: cfg.HTTPTimeout},
+	}
 }
 
 func (s *HTTPStore) Sync(ctx context.Context) error {
@@ -144,9 +151,9 @@ func (s *HTTPStore) fetchIndex(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: fetch index %s: %w", s.cfg.IndexURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -188,9 +195,9 @@ func (s *HTTPStore) fetchTemplate(ctx context.Context, ref TemplateRef) ([]byte,
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: fetch template %s: %w", templateURL, err)
 	}
 	defer resp.Body.Close()
 
