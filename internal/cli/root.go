@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	Version         = "0.1.0"
-	defaultStoreURL = "https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-catalog/main/index/apps.json"
+	Version                 = "0.1.0"
+	defaultCatalogBaseURL   = "https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main"
+	fallbackCatalogBaseURL  = "https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-catalog/main"
+	defaultStoreURL         = defaultCatalogBaseURL + "/index/apps.json"
+	defaultStoreFallbackURL = fallbackCatalogBaseURL + "/index/apps.json"
 )
 
 type commonFlags struct {
@@ -319,11 +322,17 @@ func loadApps(ctx context.Context, common *commonFlags, filter store.Filter, std
 }
 
 func loadStore(ctx context.Context, common *commonFlags, stderr io.Writer) (store.Store, int) {
-	st := store.NewHTTPStore(store.Config{
+	cfg := store.Config{
 		IndexURL: common.storeURL,
 		CacheDir: common.cacheDir,
 		CacheTTL: common.cacheTTL,
-	})
+	}
+	if common.storeURL == defaultStoreURL {
+		cfg.IndexFallbackURLs = []string{defaultStoreFallbackURL}
+		cfg.TemplateBaseURLs = []string{defaultCatalogBaseURL, fallbackCatalogBaseURL}
+	}
+
+	st := store.NewHTTPStore(cfg)
 	if err := st.Sync(ctx); err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
 		return nil, 1

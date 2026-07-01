@@ -68,6 +68,10 @@ type Filter struct {
 type Config struct {
 	// IndexURL apps.json 地址，支持 https:// 或 file://
 	IndexURL string
+	// IndexFallbackURLs are tried in order when IndexURL fails.
+	IndexFallbackURLs []string
+	// TemplateBaseURLs are preferred bases for template path downloads.
+	TemplateBaseURLs []string
 	// CacheDir 本地缓存目录，默认 ~/.cloud-forge/cache
 	CacheDir string
 	// CacheTTL 索引缓存有效期

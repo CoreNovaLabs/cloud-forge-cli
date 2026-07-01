@@ -15,9 +15,10 @@ import (
 
 // HTTPStore 从远程或本地 file:// URL 拉取 catalog，并缓存到本地。
 type HTTPStore struct {
-	cfg        Config
-	catalog    *Catalog
-	httpClient *http.Client
+	cfg            Config
+	catalog        *Catalog
+	catalogBaseURL string
+	httpClient     *http.Client
 }
 
 func NewHTTPStore(cfg Config) *HTTPStore {
@@ -47,7 +48,7 @@ func (s *HTTPStore) Sync(ctx context.Context) error {
 		}
 	}
 
-	body, err := s.fetchIndex(ctx)
+	body, indexURL, err := s.fetchIndex(ctx)
 	if err != nil {
 		return err
 	}
@@ -65,6 +66,7 @@ func (s *HTTPStore) Sync(ctx context.Context) error {
 	}
 
 	s.catalog = &catalog
+	s.catalogBaseURL = catalogBaseURLFromIndexURL(indexURL)
 	return nil
 }
 
@@ -136,31 +138,16 @@ func (s *HTTPStore) GetTemplate(ctx context.Context, appID, cloud string) (strin
 	return string(raw), nil
 }
 
-func (s *HTTPStore) fetchIndex(ctx context.Context) ([]byte, error) {
-	path, ok, err := localPathFromURL(s.cfg.IndexURL)
-	if err != nil {
-		return nil, err
+func (s *HTTPStore) fetchIndex(ctx context.Context) ([]byte, string, error) {
+	var failures []string
+	for _, indexURL := range uniqueStrings(append([]string{s.cfg.IndexURL}, s.cfg.IndexFallbackURLs...)) {
+		body, err := s.fetchBytes(ctx, indexURL, "index")
+		if err == nil {
+			return body, indexURL, nil
+		}
+		failures = append(failures, err.Error())
 	}
-
-	if ok {
-		return os.ReadFile(path)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.IndexURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("store: fetch index %s: %w", s.cfg.IndexURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("store: fetch index %s: HTTP %d", s.cfg.IndexURL, resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
+	return nil, "", fmt.Errorf("store: fetch index failed: %s", strings.Join(failures, "; "))
 }
 
 func (s *HTTPStore) fetchTemplate(ctx context.Context, ref TemplateRef) ([]byte, error) {
@@ -173,38 +160,99 @@ func (s *HTTPStore) fetchTemplate(ctx context.Context, ref TemplateRef) ([]byte,
 		}
 	}
 
-	templateURL := ref.URL
-	if templateURL == "" && ref.Path != "" && s.catalog != nil {
-		templateURL = strings.TrimRight(s.catalog.BaseURL, "/") + "/" + strings.TrimLeft(ref.Path, "/")
-	}
-	if templateURL == "" {
+	templateURLs := s.templateURLs(ref)
+	if len(templateURLs) == 0 {
 		return nil, fmt.Errorf("store: template URL is empty")
 	}
 
-	path, ok, err := localPathFromURL(templateURL)
+	var failures []string
+	for _, templateURL := range templateURLs {
+		body, err := s.fetchBytes(ctx, templateURL, "template")
+		if err == nil {
+			return body, nil
+		}
+		failures = append(failures, err.Error())
+	}
+	return nil, fmt.Errorf("store: fetch template failed: %s", strings.Join(failures, "; "))
+}
+
+func (s *HTTPStore) fetchBytes(ctx context.Context, rawURL, kind string) ([]byte, error) {
+	path, ok, err := localPathFromURL(rawURL)
 	if err != nil {
 		return nil, err
 	}
-
 	if ok {
-		return os.ReadFile(path)
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("store: fetch %s %s: %w", kind, rawURL, err)
+		}
+		return body, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, templateURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("store: fetch template %s: %w", templateURL, err)
+		return nil, fmt.Errorf("store: fetch %s %s: %w", kind, rawURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("store: fetch template %s: HTTP %d", templateURL, resp.StatusCode)
+		return nil, fmt.Errorf("store: fetch %s %s: HTTP %d", kind, rawURL, resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+func (s *HTTPStore) templateURLs(ref TemplateRef) []string {
+	var urls []string
+	if ref.Path != "" {
+		if s.catalogBaseURL != "" {
+			urls = append(urls, joinURLPath(s.catalogBaseURL, ref.Path))
+		}
+		for _, baseURL := range s.cfg.TemplateBaseURLs {
+			urls = append(urls, joinURLPath(baseURL, ref.Path))
+		}
+		if s.catalog != nil && s.catalog.BaseURL != "" {
+			urls = append(urls, joinURLPath(s.catalog.BaseURL, ref.Path))
+		}
+	}
+	if ref.URL != "" {
+		urls = append(urls, ref.URL)
+	}
+	return uniqueStrings(urls)
+}
+
+func catalogBaseURLFromIndexURL(indexURL string) string {
+	u, err := url.Parse(indexURL)
+	if err != nil || u.Scheme == "" || u.Scheme == "file" {
+		return ""
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.Path = strings.TrimSuffix(u.Path, "/index/apps.json")
+	return strings.TrimRight(u.String(), "/")
+}
+
+func joinURLPath(baseURL, path string) string {
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(path, "/")
+}
+
+func uniqueStrings(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func (s *HTTPStore) indexCachePath() string {

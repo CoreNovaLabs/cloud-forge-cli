@@ -13,8 +13,10 @@ go build ./cmd/cloud-forge
 By default the CLI reads:
 
 ```text
-https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-catalog/main/index/apps.json
+https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main/index/apps.json
 ```
+
+If the default mirror is unavailable, the CLI falls back to the GitHub raw catalog URL.
 
 For local development:
 
