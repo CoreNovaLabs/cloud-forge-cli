@@ -1,4 +1,8 @@
-# Cloud Forge CLI
+<p align="center">
+  <img src="assets/cloud-forge-logo.png" alt="Cloud Forge CLI logo" width="160" />
+</p>
+
+<h1 align="center">Cloud Forge CLI</h1>
 
 Cloud Forge CLI is the command-line client for the Cloud Forge catalog. The current foundation supports catalog search, app inspection, and template download. Cloud deployers are intentionally kept behind the catalog boundary and will be added after AWS and Aliyun templates are validated end to end.
 
