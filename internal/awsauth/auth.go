@@ -35,7 +35,6 @@ const (
 	DefaultRegion     = "us-east-1"
 	DefaultSSORegion  = "us-east-1"
 	defaultSSOSession = "cloud-forge"
-	identityCenterURL = "https://console.aws.amazon.com/singlesignon/home"
 )
 
 var errMissingSSOStartURL = errors.New("IAM Identity Center start URL is required")
@@ -62,12 +61,14 @@ type Identity struct {
 }
 
 type Runner struct {
-	In    io.Reader
-	Out   io.Writer
-	Err   io.Writer
-	Open  func(string) error
-	Now   func() time.Time
-	Stdin *os.File
+	In         io.Reader
+	Out        io.Writer
+	Err        io.Writer
+	Open       func(string) error
+	Now        func() time.Time
+	Stdin      *os.File
+	RunCommand func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error
+	Check      func(context.Context, string, string) (*Identity, error)
 }
 
 func (r Runner) Run(ctx context.Context, opts Options) error {
@@ -87,7 +88,7 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 	}
 
 	if opts.StatusOnly || opts.Method == "auto" {
-		identity, err := CheckIdentity(ctx, opts.Profile, opts.Region)
+		identity, err := r.checkIdentity(ctx, opts.Profile, opts.Region)
 		if err == nil {
 			printIdentity(r.Out, "AWS credentials are ready.", identity)
 			return nil
@@ -98,29 +99,22 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 		fmt.Fprintf(r.Out, "No working AWS credentials found for profile %q.\n\n", opts.Profile)
 	}
 
-	if opts.Method == "auto" || opts.Method == "sso" {
-		useSSO := opts.Method == "sso"
+	if opts.Method == "auto" || opts.Method == "browser" {
+		useBrowser := opts.Method == "browser"
 		if opts.Method == "auto" {
-			answer, err := p.confirm("Use browser sign-in with IAM Identity Center?", true)
+			answer, err := p.confirm("Open AWS browser sign-in?", true)
 			if err != nil {
 				return err
 			}
-			useSSO = answer
+			useBrowser = answer
 		}
-		if useSSO {
-			if err := r.configureSSO(ctx, opts, p, open, now); err == nil {
+		if useBrowser {
+			if err := r.configureBrowserLogin(ctx, opts); err == nil {
 				return nil
-			} else if opts.Method == "sso" {
-				if errors.Is(err, errMissingSSOStartURL) {
-					printMissingSSOStartURL(r.Out)
-				}
+			} else if opts.Method == "browser" {
 				return err
 			} else {
-				if errors.Is(err, errMissingSSOStartURL) {
-					printMissingSSOStartURL(r.Out)
-				} else {
-					fmt.Fprintf(r.Err, "Browser sign-in failed: %v\n\n", err)
-				}
+				fmt.Fprintf(r.Err, "Browser sign-in failed: %v\n\n", err)
 				answer, askErr := p.confirm("Configure access keys instead?", true)
 				if askErr != nil {
 					return askErr
@@ -132,7 +126,18 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 		}
 	}
 
+	if opts.Method == "sso" {
+		return r.configureSSO(ctx, opts, p, open, now)
+	}
+
 	return r.configureAccessKey(ctx, opts, p)
+}
+
+func (r Runner) checkIdentity(ctx context.Context, profile, region string) (*Identity, error) {
+	if r.Check != nil {
+		return r.Check(ctx, profile, region)
+	}
+	return CheckIdentity(ctx, profile, region)
 }
 
 func CheckIdentity(ctx context.Context, profile, region string) (*Identity, error) {
@@ -268,9 +273,48 @@ func (r Runner) configureSSO(ctx context.Context, opts Options, p *prompter, ope
 		return err
 	}
 
-	identity, err := CheckIdentity(ctx, opts.Profile, opts.Region)
+	identity, err := r.checkIdentity(ctx, opts.Profile, opts.Region)
 	if err != nil {
 		return fmt.Errorf("verify IAM Identity Center profile: %w", err)
+	}
+	printIdentity(r.Out, "Browser sign-in complete.", identity)
+	return nil
+}
+
+func (r Runner) configureBrowserLogin(ctx context.Context, opts Options) error {
+	run := r.RunCommand
+	if run == nil {
+		run = runCommand
+	}
+
+	fmt.Fprintln(r.Out, "Opening AWS browser sign-in.")
+	args := []string{
+		"login",
+		"--profile", opts.Profile,
+		"--region", opts.Region,
+		"--no-cli-pager",
+	}
+	if opts.NoBrowser {
+		args = append(args, "--remote")
+	}
+
+	if err := run(ctx, "aws", args, r.In, r.Out, r.Err); err != nil {
+		return fmt.Errorf("run aws login: %w", err)
+	}
+	credentialsPath, configPath, err := awsConfigPaths()
+	if err != nil {
+		return err
+	}
+	if err := updateINIValues(credentialsPath, opts.Profile, nil, staticCredentialKeys(), 0600); err != nil {
+		return err
+	}
+	if err := updateINIValues(configPath, configSection(opts.Profile), nil, ssoProfileKeys(), 0600); err != nil {
+		return err
+	}
+
+	identity, err := r.checkIdentity(ctx, opts.Profile, opts.Region)
+	if err != nil {
+		return fmt.Errorf("verify browser sign-in profile: %w", err)
 	}
 	printIdentity(r.Out, "Browser sign-in complete.", identity)
 	return nil
@@ -438,7 +482,7 @@ func (r Runner) configureAccessKey(ctx context.Context, opts Options, p *prompte
 	if err := writeStaticCredentials(opts.Profile, opts.Region, strings.TrimSpace(accessKeyID), strings.TrimSpace(secretAccessKey)); err != nil {
 		return err
 	}
-	identity, err := CheckIdentity(ctx, opts.Profile, opts.Region)
+	identity, err := r.checkIdentity(ctx, opts.Profile, opts.Region)
 	if err != nil {
 		return fmt.Errorf("verify access key profile: %w", err)
 	}
@@ -673,8 +717,8 @@ func normalizeOptions(opts Options) Options {
 	opts.Profile = defaultString(opts.Profile, DefaultProfile)
 	opts.Region = defaultString(opts.Region, DefaultRegion)
 	opts.Method = defaultString(strings.ToLower(strings.TrimSpace(opts.Method)), "auto")
-	if opts.Method == "browser" {
-		opts.Method = "sso"
+	if opts.Method == "login" || opts.Method == "aws-login" {
+		opts.Method = "browser"
 	}
 	opts.SSORegion = defaultString(opts.SSORegion, DefaultSSORegion)
 	return opts
@@ -682,10 +726,10 @@ func normalizeOptions(opts Options) Options {
 
 func validateMethod(method string) error {
 	switch method {
-	case "auto", "sso", "browser", "access-key":
+	case "auto", "browser", "access-key", "sso":
 		return nil
 	default:
-		return fmt.Errorf("invalid auth method %q; use auto, sso, or access-key", method)
+		return fmt.Errorf("invalid auth method %q; use auto, browser, or access-key", method)
 	}
 }
 
@@ -729,13 +773,6 @@ func printIdentity(w io.Writer, title string, identity *Identity) {
 	fmt.Fprintf(w, "Arn:     %s\n", identity.Arn)
 }
 
-func printMissingSSOStartURL(w io.Writer) {
-	fmt.Fprintln(w, "Browser sign-in needs your IAM Identity Center start URL before Cloud Forge can request a sign-in link.")
-	fmt.Fprintf(w, "Open IAM Identity Center to find or create it: %s\n", identityCenterURL)
-	fmt.Fprintln(w, "Then run: cloud-forge auth aws --method sso --sso-start-url https://example.awsapps.com/start")
-	fmt.Fprintln(w)
-}
-
 func openBrowser(target string) error {
 	switch runtime.GOOS {
 	case "darwin":
@@ -745,6 +782,14 @@ func openBrowser(target string) error {
 	default:
 		return exec.Command("xdg-open", target).Start()
 	}
+}
+
+func runCommand(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
 }
 
 type prompter struct {

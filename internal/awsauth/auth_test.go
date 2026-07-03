@@ -1,8 +1,8 @@
 package awsauth
 
 import (
-	"bytes"
-	"errors"
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,27 +14,80 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 )
 
-func TestRunnerExplainsMissingSSOStartURL(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	runner := Runner{
-		In:  strings.NewReader("\n"),
-		Out: &stdout,
-		Err: &stderr,
+func TestRunnerUsesAWSLoginForBrowserMethod(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	awsDir := filepath.Join(home, ".aws")
+	if err := os.MkdirAll(awsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(awsDir, "credentials"), []byte("[default]\naws_access_key_id = old\naws_secret_access_key = old-secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(awsDir, "config"), []byte("[default]\nregion = us-west-2\nsso_session = old\nsso_account_id = 123456789012\nsso_role_name = Admin\nlogin_session = default\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
 
-	err := runner.Run(t.Context(), Options{
-		Method: "sso",
-	})
-	if !errors.Is(err, errMissingSSOStartURL) {
-		t.Fatalf("expected missing SSO start URL error, got %v", err)
+	var gotName string
+	var gotArgs []string
+	runner := Runner{
+		Out: io.Discard,
+		Err: io.Discard,
+		RunCommand: func(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+			gotName = name
+			gotArgs = append([]string(nil), args...)
+			return nil
+		},
+		Check: func(ctx context.Context, profile, region string) (*Identity, error) {
+			return &Identity{
+				Account: "123456789012",
+				Arn:     "arn:aws:sts::123456789012:assumed-role/Admin/test",
+				Profile: profile,
+				Region:  region,
+				Source:  "LoginCredentials",
+			}, nil
+		},
 	}
-	if stderr.String() != "" {
-		t.Fatalf("expected no stderr guidance, got:\n%s", stderr.String())
+
+	if err := runner.Run(t.Context(), Options{
+		Method:    "browser",
+		Profile:   "default",
+		Region:    "us-east-1",
+		NoBrowser: true,
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if got := stdout.String(); !strings.Contains(got, identityCenterURL) ||
-		!strings.Contains(got, "--sso-start-url") {
-		t.Fatalf("missing helpful SSO start URL guidance:\n%s", got)
+
+	if gotName != "aws" {
+		t.Fatalf("expected aws command, got %q", gotName)
+	}
+	for _, expected := range []string{"login", "--profile", "default", "--region", "us-east-1", "--no-cli-pager", "--remote"} {
+		if !containsString(gotArgs, expected) {
+			t.Fatalf("missing arg %q from %v", expected, gotArgs)
+		}
+	}
+
+	credentialsData, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sectionBody(string(credentialsData), "default"); strings.Contains(got, "aws_access_key_id") ||
+		strings.Contains(got, "aws_secret_access_key") {
+		t.Fatalf("static credentials were not removed after browser login:\n%s", got)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(awsDir, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := sectionBody(string(configData), "default")
+	if !strings.Contains(profile, "login_session = default") {
+		t.Fatalf("login_session was not preserved:\n%s", profile)
+	}
+	for _, removed := range []string{"sso_session", "sso_account_id", "sso_role_name"} {
+		if strings.Contains(profile, removed) {
+			t.Fatalf("%s was not removed after browser login:\n%s", removed, profile)
+		}
 	}
 }
 
@@ -218,4 +271,13 @@ func sectionBody(content, section string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }

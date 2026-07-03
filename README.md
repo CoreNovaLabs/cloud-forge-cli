@@ -42,7 +42,7 @@ You can also build from source. See [Build From Source](#build-from-source).
 
 ## AWS Credentials
 
-Cloud Forge CLI uses the AWS SDK for Go v2. It does not shell out to the AWS CLI.
+Cloud Forge CLI uses the AWS SDK for Go v2 for AWS API calls. Browser sign-in can use AWS CLI v2's `aws login` when it is installed locally.
 
 You do not need to install the AWS CLI, but you do need AWS credentials.
 
@@ -52,7 +52,12 @@ Use the built-in AWS auth wizard:
 cloud-forge auth aws
 ```
 
-The wizard first checks whether existing AWS credentials work. If no valid credentials are found, it offers browser sign-in with IAM Identity Center. If browser sign-in is not available or fails, it falls back to access key configuration and writes AWS SDK-compatible files for you.
+The wizard first checks whether existing AWS credentials work. If no valid credentials are found, it offers two options:
+
+- browser sign-in: opens an AWS sign-in page and configures a local temporary-credential profile after authorization
+- access keys: prompts for an AWS access key ID and secret access key, then writes AWS SDK-compatible files
+
+The browser sign-in path currently uses AWS CLI v2's `aws login` capability when it is installed locally. If the browser does not open, AWS prints a sign-in URL that you can copy into a browser. If `aws login` is not available, use the access key option.
 
 If `AWS_PROFILE` is set, the auth wizard uses that profile by default. Use `--profile NAME` to check or write a specific profile.
 
@@ -94,19 +99,17 @@ cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 
 For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
 
-Browser sign-in requires IAM Identity Center to be enabled for your AWS organization or account. Cloud Forge needs your IAM Identity Center start URL before it can request and print the browser sign-in link. If you do not have one yet, open the AWS IAM Identity Center console:
-
-```text
-https://console.aws.amazon.com/singlesignon/home
-```
-
-Then run:
+Force browser sign-in:
 
 ```bash
-cloud-forge auth aws --method sso --sso-start-url https://example.awsapps.com/start
+cloud-forge auth aws --method browser
 ```
 
-If you do not use IAM Identity Center, use the access key fallback in the auth wizard.
+Force manual access key configuration:
+
+```bash
+cloud-forge auth aws --method access-key
+```
 
 ## Quick Start
 

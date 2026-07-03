@@ -66,14 +66,10 @@ type deployFlags struct {
 }
 
 type authFlags struct {
-	profile     string
-	region      string
-	method      string
-	ssoStartURL string
-	ssoRegion   string
-	accountID   string
-	roleName    string
-	noBrowser   bool
+	profile   string
+	region    string
+	method    string
+	noBrowser bool
 }
 
 type awsStackDeployer interface {
@@ -164,7 +160,7 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 
 func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|sso|access-key]")
+		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|browser|access-key]")
 		return 2
 	}
 	if args[0] != "aws" {
@@ -179,7 +175,7 @@ func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return 2
 	}
 	if len(positionals) > 1 {
-		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|sso|access-key]")
+		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|browser|access-key]")
 		return 2
 	}
 	statusOnly := false
@@ -202,15 +198,11 @@ func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		Stdin: stdinFile,
 	}
 	err = runner.Run(ctx, awsauth.Options{
-		Profile:     auth.profile,
-		Region:      auth.region,
-		Method:      auth.method,
-		SSOStartURL: auth.ssoStartURL,
-		SSORegion:   auth.ssoRegion,
-		AccountID:   auth.accountID,
-		RoleName:    auth.roleName,
-		NoBrowser:   auth.noBrowser,
-		StatusOnly:  statusOnly,
+		Profile:    auth.profile,
+		Region:     auth.region,
+		Method:     auth.method,
+		NoBrowser:  auth.noBrowser,
+		StatusOnly: statusOnly,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
@@ -676,19 +668,14 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 
 func addAuthFlags(flags *flag.FlagSet) *authFlags {
 	auth := &authFlags{
-		profile:   defaultAuthProfile(),
-		region:    defaultAWSRegion,
-		method:    "auto",
-		ssoRegion: awsauth.DefaultSSORegion,
+		profile: defaultAuthProfile(),
+		region:  defaultAWSRegion,
+		method:  "auto",
 	}
 	flags.StringVar(&auth.profile, "profile", auth.profile, "AWS profile to check or write")
 	flags.StringVar(&auth.region, "region", auth.region, "default AWS region for the profile")
-	flags.StringVar(&auth.method, "method", auth.method, "auth method: auto, sso, or access-key")
-	flags.StringVar(&auth.ssoStartURL, "sso-start-url", "", "IAM Identity Center start URL")
-	flags.StringVar(&auth.ssoRegion, "sso-region", auth.ssoRegion, "IAM Identity Center region")
-	flags.StringVar(&auth.accountID, "account-id", "", "IAM Identity Center AWS account ID")
-	flags.StringVar(&auth.roleName, "role-name", "", "IAM Identity Center role name")
-	flags.BoolVar(&auth.noBrowser, "no-browser", false, "print the sign-in URL without opening a browser")
+	flags.StringVar(&auth.method, "method", auth.method, "auth method: auto, browser, or access-key")
+	flags.BoolVar(&auth.noBrowser, "no-browser", false, "print the browser sign-in URL without opening a browser")
 	return auth
 }
 
