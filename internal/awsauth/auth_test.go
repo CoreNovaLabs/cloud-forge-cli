@@ -28,20 +28,25 @@ func TestRunnerUsesAWSLoginForBrowserMethod(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var gotName string
-	var gotArgs []string
+	const sessionARN = "arn:aws:sts::123456789012:assumed-role/Admin/test"
+	var browserLoginCalled bool
 	runner := Runner{
 		Out: io.Discard,
 		Err: io.Discard,
-		RunCommand: func(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-			gotName = name
-			gotArgs = append([]string(nil), args...)
-			return nil
+		BrowserLogin: func(ctx context.Context, opts browserLoginOptions) (*browserLoginResult, error) {
+			browserLoginCalled = true
+			if opts.Region != "us-east-1" {
+				t.Fatalf("unexpected browser login region %q", opts.Region)
+			}
+			if !opts.NoBrowser {
+				t.Fatalf("expected no-browser option to be passed through")
+			}
+			return &browserLoginResult{SessionARN: sessionARN}, nil
 		},
 		Check: func(ctx context.Context, profile, region string) (*Identity, error) {
 			return &Identity{
 				Account: "123456789012",
-				Arn:     "arn:aws:sts::123456789012:assumed-role/Admin/test",
+				Arn:     sessionARN,
 				Profile: profile,
 				Region:  region,
 				Source:  "LoginCredentials",
@@ -58,13 +63,8 @@ func TestRunnerUsesAWSLoginForBrowserMethod(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotName != "aws" {
-		t.Fatalf("expected aws command, got %q", gotName)
-	}
-	for _, expected := range []string{"login", "--profile", "default", "--region", "us-east-1", "--no-cli-pager", "--remote"} {
-		if !containsString(gotArgs, expected) {
-			t.Fatalf("missing arg %q from %v", expected, gotArgs)
-		}
+	if !browserLoginCalled {
+		t.Fatalf("browser login was not called")
 	}
 
 	credentialsData, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
@@ -81,7 +81,7 @@ func TestRunnerUsesAWSLoginForBrowserMethod(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := sectionBody(string(configData), "default")
-	if !strings.Contains(profile, "login_session = default") {
+	if !strings.Contains(profile, "login_session = "+sessionARN) {
 		t.Fatalf("login_session was not preserved:\n%s", profile)
 	}
 	for _, removed := range []string{"sso_session", "sso_account_id", "sso_role_name"} {
@@ -271,13 +271,4 @@ func sectionBody(content, section string) string {
 		}
 	}
 	return strings.Join(out, "\n")
-}
-
-func containsString(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
 }

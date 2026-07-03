@@ -42,7 +42,7 @@ You can also build from source. See [Build From Source](#build-from-source).
 
 ## AWS Credentials
 
-Cloud Forge CLI uses the AWS SDK for Go v2 for AWS API calls. Browser sign-in can use AWS CLI v2's `aws login` when it is installed locally.
+Cloud Forge CLI uses the AWS SDK for Go v2 for AWS API calls and includes a built-in AWS browser sign-in flow.
 
 You do not need to install the AWS CLI, but you do need AWS credentials.
 
@@ -57,7 +57,7 @@ The wizard first checks whether existing AWS credentials work. If no valid crede
 - browser sign-in: opens an AWS sign-in page and configures a local temporary-credential profile after authorization
 - access keys: prompts for an AWS access key ID and secret access key, then writes AWS SDK-compatible files
 
-The browser sign-in path currently uses AWS CLI v2's `aws login` capability when it is installed locally. If the browser does not open, AWS prints a sign-in URL that you can copy into a browser. If `aws login` is not available, use the access key option.
+The browser sign-in path is implemented inside Cloud Forge with AWS Sign-In OAuth and PKCE. It does not require the AWS CLI. If the browser does not open, Cloud Forge prints a sign-in URL that you can copy into a browser. Use `--no-browser` to print a URL and paste back the authorization code manually.
 
 If `AWS_PROFILE` is set, the auth wizard uses that profile by default. Use `--profile NAME` to check or write a specific profile.
 
@@ -103,6 +103,12 @@ Force browser sign-in:
 
 ```bash
 cloud-forge auth aws --method browser
+```
+
+Print a browser sign-in URL without opening the browser:
+
+```bash
+cloud-forge auth aws --method browser --no-browser
 ```
 
 Force manual access key configuration:

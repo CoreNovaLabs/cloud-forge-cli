@@ -61,14 +61,14 @@ type Identity struct {
 }
 
 type Runner struct {
-	In         io.Reader
-	Out        io.Writer
-	Err        io.Writer
-	Open       func(string) error
-	Now        func() time.Time
-	Stdin      *os.File
-	RunCommand func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error
-	Check      func(context.Context, string, string) (*Identity, error)
+	In           io.Reader
+	Out          io.Writer
+	Err          io.Writer
+	Open         func(string) error
+	Now          func() time.Time
+	Stdin        *os.File
+	BrowserLogin func(context.Context, browserLoginOptions) (*browserLoginResult, error)
+	Check        func(context.Context, string, string) (*Identity, error)
 }
 
 func (r Runner) Run(ctx context.Context, opts Options) error {
@@ -78,14 +78,6 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 	}
 
 	p := newPrompter(r.In, r.Out, r.Stdin)
-	open := r.Open
-	if open == nil {
-		open = openBrowser
-	}
-	now := r.Now
-	if now == nil {
-		now = time.Now
-	}
 
 	if opts.StatusOnly || opts.Method == "auto" {
 		identity, err := r.checkIdentity(ctx, opts.Profile, opts.Region)
@@ -124,10 +116,6 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 				}
 			}
 		}
-	}
-
-	if opts.Method == "sso" {
-		return r.configureSSO(ctx, opts, p, open, now)
 	}
 
 	return r.configureAccessKey(ctx, opts, p)
@@ -282,24 +270,21 @@ func (r Runner) configureSSO(ctx context.Context, opts Options, p *prompter, ope
 }
 
 func (r Runner) configureBrowserLogin(ctx context.Context, opts Options) error {
-	run := r.RunCommand
-	if run == nil {
-		run = runCommand
+	login := r.BrowserLogin
+	if login == nil {
+		login = runBrowserLogin
 	}
-
-	fmt.Fprintln(r.Out, "Opening AWS browser sign-in.")
-	args := []string{
-		"login",
-		"--profile", opts.Profile,
-		"--region", opts.Region,
-		"--no-cli-pager",
-	}
-	if opts.NoBrowser {
-		args = append(args, "--remote")
-	}
-
-	if err := run(ctx, "aws", args, r.In, r.Out, r.Err); err != nil {
-		return fmt.Errorf("run aws login: %w", err)
+	loginResult, err := login(ctx, browserLoginOptions{
+		Region:    opts.Region,
+		NoBrowser: opts.NoBrowser,
+		In:        r.In,
+		Out:       r.Out,
+		Err:       r.Err,
+		Open:      r.Open,
+		Now:       r.Now,
+	})
+	if err != nil {
+		return err
 	}
 	credentialsPath, configPath, err := awsConfigPaths()
 	if err != nil {
@@ -308,7 +293,11 @@ func (r Runner) configureBrowserLogin(ctx context.Context, opts Options) error {
 	if err := updateINIValues(credentialsPath, opts.Profile, nil, staticCredentialKeys(), 0600); err != nil {
 		return err
 	}
-	if err := updateINIValues(configPath, configSection(opts.Profile), nil, ssoProfileKeys(), 0600); err != nil {
+	removeKeys := append(ssoProfileKeys(), "role_arn", "credential_process", "web_identity_token_file")
+	if err := updateINIValues(configPath, configSection(opts.Profile), map[string]string{
+		"region":        opts.Region,
+		"login_session": loginResult.SessionARN,
+	}, removeKeys, 0600); err != nil {
 		return err
 	}
 
@@ -726,7 +715,7 @@ func normalizeOptions(opts Options) Options {
 
 func validateMethod(method string) error {
 	switch method {
-	case "auto", "browser", "access-key", "sso":
+	case "auto", "browser", "access-key":
 		return nil
 	default:
 		return fmt.Errorf("invalid auth method %q; use auto, browser, or access-key", method)
@@ -782,14 +771,6 @@ func openBrowser(target string) error {
 	default:
 		return exec.Command("xdg-open", target).Start()
 	}
-}
-
-func runCommand(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
 }
 
 type prompter struct {
