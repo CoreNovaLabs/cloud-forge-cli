@@ -140,6 +140,66 @@ func TestHTTPStore_IndexFallbackURL(t *testing.T) {
 	}
 }
 
+func TestHTTPStore_ZeroCacheTTLForcesRefresh(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		price := "$8/month"
+		if requests > 1 {
+			price = "free"
+		}
+		fmt.Fprintf(w, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": "n8n",
+    "name": "n8n",
+    "desc": "Workflow automation",
+    "category": "automation",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "price": %q,
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/n8n/templates/aws.yaml"}}
+  }]
+}`, price)
+	}))
+	defer server.Close()
+
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	indexURL := server.URL + "/index/apps.json"
+
+	first := store.NewHTTPStore(store.Config{
+		IndexURL: indexURL,
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := first.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	second := store.NewHTTPStore(store.Config{
+		IndexURL: indexURL,
+		CacheDir: cacheDir,
+		CacheTTL: 0,
+	})
+	if err := second.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	apps, err := second.List(store.Filter{Query: "n8n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0].Price != "free" {
+		t.Fatalf("expected refreshed free price, got %#v", apps)
+	}
+	if requests != 2 {
+		t.Fatalf("expected 2 index requests, got %d", requests)
+	}
+}
+
 func TestHTTPStore_TemplateBaseURLFallback(t *testing.T) {
 	templatePrimary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "template unavailable", http.StatusBadGateway)

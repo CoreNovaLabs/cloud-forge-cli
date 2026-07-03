@@ -22,9 +22,6 @@ type HTTPStore struct {
 }
 
 func NewHTTPStore(cfg Config) *HTTPStore {
-	if cfg.CacheTTL == 0 {
-		cfg.CacheTTL = 24 * time.Hour
-	}
 	if cfg.HTTPTimeout == 0 {
 		cfg.HTTPTimeout = 30 * time.Second
 	}
@@ -278,6 +275,9 @@ func (s *HTTPStore) templateCachePath(appID, cloud string) string {
 }
 
 func (s *HTTPStore) isCacheStale(path string) bool {
+	if s.cfg.CacheTTL <= 0 {
+		return true
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return true
