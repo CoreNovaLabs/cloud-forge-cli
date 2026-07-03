@@ -1,0 +1,63 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+
+          build() {
+            local goos="$1"
+            local goarch="$2"
+            local ext="${3:-}"
+            local archive_ext="$4"
+            local name="cloud-forge_${version}_${goos}_${goarch}"
+            local workdir
+            workdir="$(mktemp -d)"
+
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X github.com/cloud-forge/cli/internal/cli.Version=${version}" \
+              -o "${workdir}/cloud-forge${ext}" ./cmd/cloud-forge
+
+            cp README.md "${workdir}/README.md"
+            if [[ "$archive_ext" == "zip" ]]; then
+              (cd "$workdir" && zip -q "../${name}.zip" "cloud-forge${ext}" README.md)
+              mv "${workdir}/../${name}.zip" dist/
+            else
+              tar -C "$workdir" -czf "dist/${name}.tar.gz" "cloud-forge${ext}" README.md
+            fi
+            rm -rf "$workdir"
+          }
+
+          build darwin amd64 "" tar.gz
+          build darwin arm64 "" tar.gz
+          build linux amd64 "" tar.gz
+          build linux arm64 "" tar.gz
+          build windows amd64 ".exe" zip
+
+          (cd dist && sha256sum * > checksums.txt)
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
