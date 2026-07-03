@@ -94,7 +94,19 @@ cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 
 For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
 
-Browser sign-in requires IAM Identity Center to be enabled for your AWS organization or account. If you do not have an IAM Identity Center start URL, use the access key fallback in the auth wizard.
+Browser sign-in requires IAM Identity Center to be enabled for your AWS organization or account. Cloud Forge needs your IAM Identity Center start URL before it can request and print the browser sign-in link. If you do not have one yet, open the AWS IAM Identity Center console:
+
+```text
+https://console.aws.amazon.com/singlesignon/home
+```
+
+Then run:
+
+```bash
+cloud-forge auth aws --method sso --sso-start-url https://example.awsapps.com/start
+```
+
+If you do not use IAM Identity Center, use the access key fallback in the auth wizard.
 
 ## Quick Start
 

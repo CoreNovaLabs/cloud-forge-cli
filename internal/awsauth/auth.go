@@ -35,7 +35,10 @@ const (
 	DefaultRegion     = "us-east-1"
 	DefaultSSORegion  = "us-east-1"
 	defaultSSOSession = "cloud-forge"
+	identityCenterURL = "https://console.aws.amazon.com/singlesignon/home"
 )
+
+var errMissingSSOStartURL = errors.New("IAM Identity Center start URL is required")
 
 type Options struct {
 	Profile     string
@@ -98,7 +101,7 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 	if opts.Method == "auto" || opts.Method == "sso" {
 		useSSO := opts.Method == "sso"
 		if opts.Method == "auto" {
-			answer, err := p.confirm("Use browser sign-in with IAM Identity Center? [Y/n]: ", true)
+			answer, err := p.confirm("Use browser sign-in with IAM Identity Center?", true)
 			if err != nil {
 				return err
 			}
@@ -108,10 +111,17 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 			if err := r.configureSSO(ctx, opts, p, open, now); err == nil {
 				return nil
 			} else if opts.Method == "sso" {
+				if errors.Is(err, errMissingSSOStartURL) {
+					printMissingSSOStartURL(r.Out)
+				}
 				return err
 			} else {
-				fmt.Fprintf(r.Err, "Browser sign-in failed: %v\n\n", err)
-				answer, askErr := p.confirm("Configure access keys instead? [Y/n]: ", true)
+				if errors.Is(err, errMissingSSOStartURL) {
+					printMissingSSOStartURL(r.Out)
+				} else {
+					fmt.Fprintf(r.Err, "Browser sign-in failed: %v\n\n", err)
+				}
+				answer, askErr := p.confirm("Configure access keys instead?", true)
 				if askErr != nil {
 					return askErr
 				}
@@ -158,13 +168,13 @@ func (r Runner) configureSSO(ctx context.Context, opts Options, p *prompter, ope
 	startURL := strings.TrimSpace(opts.SSOStartURL)
 	if startURL == "" {
 		var err error
-		startURL, err = p.ask("IAM Identity Center start URL: ", "")
+		startURL, err = p.ask("IAM Identity Center start URL (example: https://example.awsapps.com/start): ", "")
 		if err != nil {
 			return err
 		}
 	}
 	if startURL == "" {
-		return fmt.Errorf("IAM Identity Center start URL is required")
+		return errMissingSSOStartURL
 	}
 	if _, err := url.ParseRequestURI(startURL); err != nil {
 		return fmt.Errorf("invalid IAM Identity Center start URL %q: %w", startURL, err)
@@ -220,6 +230,7 @@ func (r Runner) configureSSO(ctx context.Context, opts Options, p *prompter, ope
 	if !opts.NoBrowser && aws.ToString(device.VerificationUriComplete) != "" {
 		if err := open(aws.ToString(device.VerificationUriComplete)); err != nil {
 			fmt.Fprintf(r.Err, "Could not open browser automatically: %v\n", err)
+			fmt.Fprintln(r.Err, "Use the URL printed above to continue sign-in.")
 		}
 	}
 
@@ -716,6 +727,13 @@ func printIdentity(w io.Writer, title string, identity *Identity) {
 	}
 	fmt.Fprintf(w, "Account: %s\n", identity.Account)
 	fmt.Fprintf(w, "Arn:     %s\n", identity.Arn)
+}
+
+func printMissingSSOStartURL(w io.Writer) {
+	fmt.Fprintln(w, "Browser sign-in needs your IAM Identity Center start URL before Cloud Forge can request a sign-in link.")
+	fmt.Fprintf(w, "Open IAM Identity Center to find or create it: %s\n", identityCenterURL)
+	fmt.Fprintln(w, "Then run: cloud-forge auth aws --method sso --sso-start-url https://example.awsapps.com/start")
+	fmt.Fprintln(w)
 }
 
 func openBrowser(target string) error {

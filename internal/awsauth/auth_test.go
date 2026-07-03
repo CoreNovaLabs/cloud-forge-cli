@@ -1,6 +1,8 @@
 package awsauth
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 )
+
+func TestRunnerExplainsMissingSSOStartURL(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := Runner{
+		In:  strings.NewReader("\n"),
+		Out: &stdout,
+		Err: &stderr,
+	}
+
+	err := runner.Run(t.Context(), Options{
+		Method: "sso",
+	})
+	if !errors.Is(err, errMissingSSOStartURL) {
+		t.Fatalf("expected missing SSO start URL error, got %v", err)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("expected no stderr guidance, got:\n%s", stderr.String())
+	}
+	if got := stdout.String(); !strings.Contains(got, identityCenterURL) ||
+		!strings.Contains(got, "--sso-start-url") {
+		t.Fatalf("missing helpful SSO start URL guidance:\n%s", got)
+	}
+}
 
 func TestSetINIValuesUpdatesExistingSection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config")
