@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloud-forge/cli/internal/awsauth"
 	"github.com/cloud-forge/cli/internal/awsdeploy"
 	"github.com/cloud-forge/cli/internal/telemetry"
 	"github.com/cloud-forge/cli/pkg/store"
@@ -62,6 +63,17 @@ type deployFlags struct {
 	noWait       bool
 	timeout      time.Duration
 	progress     string
+}
+
+type authFlags struct {
+	profile     string
+	region      string
+	method      string
+	ssoStartURL string
+	ssoRegion   string
+	accountID   string
+	roleName    string
+	noBrowser   bool
 }
 
 type awsStackDeployer interface {
@@ -117,6 +129,10 @@ func (f keyValueFlag) Set(value string) error {
 
 // Run executes the CLI and returns a process exit code.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return RunWithIO(ctx, args, os.Stdin, stdout, stderr)
+}
+
+func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printUsage(stderr)
 		return 2
@@ -131,6 +147,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runTemplate(ctx, args[1:], stdout, stderr)
 	case "deploy":
 		return runDeploy(ctx, args[1:], stdout, stderr)
+	case "auth":
+		return runAuth(ctx, args[1:], stdin, stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "cloud-forge %s\n", Version)
 		return 0
@@ -142,6 +160,63 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		printUsage(stderr)
 		return 2
 	}
+}
+
+func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|sso|access-key]")
+		return 2
+	}
+	if args[0] != "aws" {
+		fmt.Fprintf(stderr, "auth currently supports only aws, got %q\n", args[0])
+		return 2
+	}
+
+	flags := newFlagSet("auth aws", stderr)
+	auth := addAuthFlags(flags)
+	positionals, err := parseInterspersed(flags, args[1:])
+	if err != nil {
+		return 2
+	}
+	if len(positionals) > 1 {
+		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|sso|access-key]")
+		return 2
+	}
+	statusOnly := false
+	if len(positionals) == 1 {
+		if positionals[0] != "status" {
+			fmt.Fprintf(stderr, "unknown auth aws command %q\n", positionals[0])
+			return 2
+		}
+		statusOnly = true
+	}
+
+	var stdinFile *os.File
+	if f, ok := stdin.(*os.File); ok {
+		stdinFile = f
+	}
+	runner := awsauth.Runner{
+		In:    stdin,
+		Out:   stdout,
+		Err:   stderr,
+		Stdin: stdinFile,
+	}
+	err = runner.Run(ctx, awsauth.Options{
+		Profile:     auth.profile,
+		Region:      auth.region,
+		Method:      auth.method,
+		SSOStartURL: auth.ssoStartURL,
+		SSORegion:   auth.ssoRegion,
+		AccountID:   auth.accountID,
+		RoleName:    auth.roleName,
+		NoBrowser:   auth.noBrowser,
+		StatusOnly:  statusOnly,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -599,6 +674,31 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	return deploy
 }
 
+func addAuthFlags(flags *flag.FlagSet) *authFlags {
+	auth := &authFlags{
+		profile:   defaultAuthProfile(),
+		region:    defaultAWSRegion,
+		method:    "auto",
+		ssoRegion: awsauth.DefaultSSORegion,
+	}
+	flags.StringVar(&auth.profile, "profile", auth.profile, "AWS profile to check or write")
+	flags.StringVar(&auth.region, "region", auth.region, "default AWS region for the profile")
+	flags.StringVar(&auth.method, "method", auth.method, "auth method: auto, sso, or access-key")
+	flags.StringVar(&auth.ssoStartURL, "sso-start-url", "", "IAM Identity Center start URL")
+	flags.StringVar(&auth.ssoRegion, "sso-region", auth.ssoRegion, "IAM Identity Center region")
+	flags.StringVar(&auth.accountID, "account-id", "", "IAM Identity Center AWS account ID")
+	flags.StringVar(&auth.roleName, "role-name", "", "IAM Identity Center role name")
+	flags.BoolVar(&auth.noBrowser, "no-browser", false, "print the sign-in URL without opening a browser")
+	return auth
+}
+
+func defaultAuthProfile() string {
+	if profile := strings.TrimSpace(os.Getenv("AWS_PROFILE")); profile != "" {
+		return profile
+	}
+	return awsauth.DefaultProfile
+}
+
 func track(common *commonFlags, ctx context.Context, event telemetry.Event) {
 	client := telemetry.NewClient(telemetry.Config{
 		CacheDir:   common.cacheDir,
@@ -706,6 +806,7 @@ Usage:
   cloud-forge show <app>
   cloud-forge template <app> --cloud aws|aliyun
   cloud-forge deploy <app> --cloud aws [--region us-east-1] [--param Name=Value]
+  cloud-forge auth aws [status]
   cloud-forge version
 
 Environment:

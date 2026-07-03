@@ -46,6 +46,24 @@ Cloud Forge CLI uses the AWS SDK for Go v2. It does not shell out to the AWS CLI
 
 You do not need to install the AWS CLI, but you do need AWS credentials.
 
+Use the built-in AWS auth wizard:
+
+```bash
+cloud-forge auth aws
+```
+
+The wizard first checks whether existing AWS credentials work. If no valid credentials are found, it offers browser sign-in with IAM Identity Center. If browser sign-in is not available or fails, it falls back to access key configuration and writes AWS SDK-compatible files for you.
+
+If `AWS_PROFILE` is set, the auth wizard uses that profile by default. Use `--profile NAME` to check or write a specific profile.
+
+Check current auth status:
+
+```bash
+cloud-forge auth aws status
+```
+
+The status output includes the AWS account, ARN, region, profile, and AWS SDK credential source.
+
 Supported credential sources include:
 
 - `~/.aws/credentials`
@@ -75,6 +93,8 @@ cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 ```
 
 For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
+
+Browser sign-in requires IAM Identity Center to be enabled for your AWS organization or account. If you do not have an IAM Identity Center start URL, use the access key fallback in the auth wizard.
 
 ## Quick Start
 
@@ -220,6 +240,7 @@ export CLOUD_FORGE_STORE_URL="file:///absolute/path/to/cloud-forge-catalog/index
 
 ```bash
 cloud-forge search hello --cloud aws
+cloud-forge auth aws status
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
