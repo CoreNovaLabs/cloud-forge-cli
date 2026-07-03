@@ -46,18 +46,15 @@ Cloud Forge CLI uses the AWS SDK for Go v2 for AWS API calls and includes a buil
 
 You do not need to install the AWS CLI, but you do need AWS credentials.
 
-Use the built-in AWS auth wizard:
+Use the built-in AWS browser sign-in:
 
 ```bash
 cloud-forge auth aws
 ```
 
-The wizard first checks whether existing AWS credentials work. If no valid credentials are found, it offers two options:
+By default, `cloud-forge auth aws` opens an AWS sign-in page and configures a local temporary-credential profile after authorization. The browser sign-in path is implemented inside Cloud Forge with AWS Sign-In OAuth and PKCE. It does not require the AWS CLI.
 
-- browser sign-in: opens an AWS sign-in page and configures a local temporary-credential profile after authorization
-- access keys: prompts for an AWS access key ID and secret access key, then writes AWS SDK-compatible files
-
-The browser sign-in path is implemented inside Cloud Forge with AWS Sign-In OAuth and PKCE. It does not require the AWS CLI. If the browser does not open, Cloud Forge prints a sign-in URL that you can copy into a browser. Use `--no-browser` to print a URL and paste back the authorization code manually.
+If the browser does not open, Cloud Forge prints a sign-in URL that you can copy into a browser. Use `--no-browser` to print a URL and paste back the authorization code manually.
 
 If `AWS_PROFILE` is set, the auth wizard uses that profile by default. Use `--profile NAME` to check or write a specific profile.
 
@@ -99,7 +96,7 @@ cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 
 For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
 
-Force browser sign-in:
+Browser sign-in is the default; this explicit form is equivalent:
 
 ```bash
 cloud-forge auth aws --method browser

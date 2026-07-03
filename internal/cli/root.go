@@ -670,7 +670,7 @@ func addAuthFlags(flags *flag.FlagSet) *authFlags {
 	auth := &authFlags{
 		profile: defaultAuthProfile(),
 		region:  defaultAWSRegion,
-		method:  "auto",
+		method:  "browser",
 	}
 	flags.StringVar(&auth.profile, "profile", auth.profile, "AWS profile to check or write")
 	flags.StringVar(&auth.region, "region", auth.region, "default AWS region for the profile")
