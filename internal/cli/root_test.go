@@ -351,7 +351,7 @@ func TestDeployAWSProgressNoneDisablesProgress(t *testing.T) {
 
 func TestDeployAWSRequiresCatalogParameters(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
-	indexPath := writeTestCatalog(t)
+	indexPath := writeRequiredParamCatalog(t)
 
 	oldNewAWSDeployer := newAWSDeployer
 	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
@@ -377,18 +377,73 @@ func TestDeployAWSRequiresCatalogParameters(t *testing.T) {
 		t.TempDir(),
 		"--ssh-key",
 		"none",
+		"--param",
+		"RequiredToken=",
 	}, &stdout, &stderr)
 
 	if code != 2 {
 		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "missing required AWS parameter(s): KeyName") {
+	if !strings.Contains(stderr.String(), "missing required AWS parameter(s): RequiredToken") {
 		t.Fatalf("unexpected stderr: %s", stderr.String())
 	}
 }
 
+func TestDeleteAWSStack(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+
+	var gotInput awsdeploy.DestroyInput
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		return fakeAWSDeployer{input: &awsdeploy.DeployInput{}, destroyInput: &gotInput}, nil
+	}
+	t.Cleanup(func() {
+		newAWSDeployer = oldNewAWSDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"delete",
+		"cloud-forge-gitea",
+		"--cloud",
+		"aws",
+		"--region",
+		"us-east-1",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if gotInput.StackName != "cloud-forge-gitea" {
+		t.Fatalf("unexpected stack name %q", gotInput.StackName)
+	}
+	if !gotInput.Wait {
+		t.Fatal("expected delete to wait by default")
+	}
+	if !strings.Contains(stdout.String(), "DELETE_COMPLETE") {
+		t.Fatalf("expected delete output, got: %s", stdout.String())
+	}
+}
+
+func TestHelpDeploy(t *testing.T) {
+	var stdout bytes.Buffer
+	code := Run(context.Background(), []string{"help", "deploy"}, &stdout, &stderrBuffer{})
+	if code != 0 {
+		t.Fatalf("exit code %d", code)
+	}
+	if !strings.Contains(stdout.String(), "--dry-run") {
+		t.Fatalf("expected deploy help, got: %s", stdout.String())
+	}
+}
+
+type stderrBuffer struct{}
+
+func (stderrBuffer) Write(p []byte) (int, error) { return len(p), nil }
+
 type fakeAWSDeployer struct {
 	input          *awsdeploy.DeployInput
+	destroyInput   *awsdeploy.DestroyInput
 	progressEvents []awsdeploy.StackProgressEvent
 }
 
@@ -405,6 +460,24 @@ func (f fakeAWSDeployer) Deploy(ctx context.Context, input awsdeploy.DeployInput
 		AccountID: "123456789012",
 		StackName: input.StackName,
 		Outputs:   map[string]string{"ServiceURL": "https://example.test"},
+	}, nil
+}
+
+func (f fakeAWSDeployer) Destroy(ctx context.Context, input awsdeploy.DestroyInput) (*awsdeploy.DestroyOutput, error) {
+	if f.destroyInput != nil {
+		*f.destroyInput = input
+	}
+	for _, event := range f.progressEvents {
+		if input.Progress != nil {
+			input.Progress(event)
+		}
+	}
+	return &awsdeploy.DestroyOutput{
+		Action:    "deleted",
+		Region:    "us-east-1",
+		AccountID: "123456789012",
+		StackName: input.StackName,
+		Status:    "DELETE_COMPLETE",
 	}, nil
 }
 
@@ -444,11 +517,48 @@ func writeTestCatalog(t *testing.T) string {
       },
       "KeyName": {
         "type": "string",
-        "aws": {"required": true}
+        "aws": {"default": ""}
       },
       "AllowedIP": {
         "type": "string",
         "default": "0.0.0.0/0"
+      }
+    }
+  }]
+}`)
+	return indexPath
+}
+
+func writeRequiredParamCatalog(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "apps", "gitea", "templates", "aws.yaml"), "Resources: {}\n")
+	indexPath := filepath.Join(root, "index", "apps.json")
+	writeFile(t, indexPath, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "base_url": "https://example.invalid/catalog",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": "gitea",
+    "name": "Gitea",
+    "desc": "Git hosting",
+    "category": "devtools",
+    "tags": ["git"],
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {
+      "aws": {
+        "path": "apps/gitea/templates/aws.yaml",
+        "url": "https://example.invalid/remote.yaml"
+      }
+    },
+    "params": {
+      "RequiredToken": {
+        "type": "string",
+        "aws": {"required": true}
       }
     }
   }]

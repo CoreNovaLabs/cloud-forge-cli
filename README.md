@@ -4,7 +4,9 @@
 
 <h1 align="center">Cloud Forge CLI</h1>
 
-Cloud Forge CLI is the command-line client for the Cloud Forge catalog. The current foundation supports catalog search, app inspection, template download, and AWS CloudFormation deployment.
+Cloud Forge CLI is the command-line client for the Cloud Forge catalog. It supports catalog search, app inspection, template download, AWS CloudFormation deploy, and stack deletion.
+
+**Supported in v1:** AWS deploy/delete for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun templates can be listed and downloaded, but deploy is AWS-only.
 
 ## What It Does
 
@@ -16,7 +18,8 @@ For AWS, it can:
 - show app metadata
 - render the CloudFormation template for an app
 - create or update an AWS CloudFormation stack
-- show CloudFormation resource progress while deploying
+- delete an AWS CloudFormation stack
+- show CloudFormation resource progress while deploying or deleting
 - reuse a local SSH key for EC2 access
 - print stack outputs such as service URL, public IP, instance ID, AMI ID, and region when the template provides them
 
@@ -24,13 +27,21 @@ AWS deploys default to `us-east-1`.
 
 ## Install
 
-Download a release archive for your operating system from:
+Recommended one-line install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+```
+
+This installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if needed.
+
+Manual install from GitHub Releases:
 
 ```text
 https://github.com/CoreNovaLabs/cloud-forge-cli/releases
 ```
 
-Unpack it and put the `cloud-forge` binary somewhere on your `PATH`.
+Unpack the archive and put the `cloud-forge` binary somewhere on your `PATH`.
 
 Verify the install:
 
@@ -156,7 +167,39 @@ During deployment, the CLI prints CloudFormation progress:
 [12:01:15] AWS::EC2::Instance HelloInstance CREATE_IN_PROGRESS
 ```
 
-When the stack completes, the CLI prints the outputs returned by the template.
+When the stack completes, the CLI prints the outputs returned by the template and a cleanup command:
+
+```text
+To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+```
+
+## Cleanup
+
+Delete a stack created by Cloud Forge:
+
+```bash
+cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+```
+
+Wait for deletion to finish (default):
+
+```bash
+cloud-forge delete cloud-forge-gitea --cloud aws --wait
+```
+
+Start deletion without waiting:
+
+```bash
+cloud-forge delete cloud-forge-n8n --cloud aws --no-wait
+```
+
+Deleting the stack removes the EC2 instance, Elastic IP, security group, and related resources created by the template.
+
+The reusable local private key is not deleted automatically:
+
+```text
+~/.cloud-forge/keys/aws/cloud-forge-default.pem
+```
 
 ## SSH Key Behavior
 
@@ -189,26 +232,6 @@ cloud-forge deploy hello-nginx --cloud aws \
   --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
 ```
 
-## Cleanup
-
-Cloud Forge CLI v0.1.0 creates or updates stacks, but it does not yet provide a `delete` command.
-
-To remove a deployment, delete the CloudFormation stack in the AWS Console.
-
-If you use the AWS CLI, the equivalent command is:
-
-```bash
-aws cloudformation delete-stack --region us-east-1 --stack-name cloud-forge-hello-nginx
-```
-
-Deleting the stack removes the EC2 instance, Elastic IP, security group, and related stack resources created by the template.
-
-The reusable local private key is not deleted automatically:
-
-```text
-~/.cloud-forge/keys/aws/cloud-forge-default.pem
-```
-
 ## Common Options
 
 ```bash
@@ -236,7 +259,7 @@ cloud-forge deploy gitea --cloud aws \
   --param ImageId=ami-0123456789abcdef0
 ```
 
-Supported dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, and `--latest-ami-id`.
+Supported dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, `--latest-ami-id`, and `--caddy-tls-mode`.
 
 ## Catalog Reference
 
@@ -262,7 +285,11 @@ cloud-forge auth aws status
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
+cloud-forge delete cloud-forge-hello-nginx --cloud aws
+cloud-forge help deploy
 ```
+
+Aliyun templates are available via `search` and `template`, but `deploy` and `delete` are AWS-only in v1.
 
 ## AWS Deploy
 

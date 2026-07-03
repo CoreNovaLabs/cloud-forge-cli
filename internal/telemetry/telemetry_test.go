@@ -30,7 +30,7 @@ func TestTrackPostsAnonymousEvent(t *testing.T) {
 	client := NewClient(Config{
 		CacheDir:   t.TempDir(),
 		Endpoint:   server.URL + "/v1/events",
-		CLIVersion: "0.1.0",
+		CLIVersion: "0.2.0",
 	})
 
 	client.Track(context.Background(), Event{
@@ -46,7 +46,7 @@ func TestTrackPostsAnonymousEvent(t *testing.T) {
 		if event.AnonymousID == "" {
 			t.Fatal("expected anonymous id")
 		}
-		if event.CLIVersion != "0.1.0" {
+		if event.CLIVersion != "0.2.0" {
 			t.Fatalf("unexpected cli version %q", event.CLIVersion)
 		}
 		if event.OS == "" || event.Arch == "" {
@@ -69,7 +69,7 @@ func TestTrackCanBeDisabled(t *testing.T) {
 	client := NewClient(Config{
 		CacheDir:   t.TempDir(),
 		Endpoint:   server.URL,
-		CLIVersion: "0.1.0",
+		CLIVersion: "0.2.0",
 	})
 	client.Track(context.Background(), Event{Event: "search"})
 	time.Sleep(50 * time.Millisecond)

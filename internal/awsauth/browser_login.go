@@ -26,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/signin"
 	signintypes "github.com/aws/aws-sdk-go-v2/service/signin/types"
 	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/ptr"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
@@ -191,14 +192,18 @@ func exchangeAndCacheLoginToken(ctx context.Context, client signinTokenClient, b
 }
 
 func signInBaseURL(region string) (string, error) {
-	endpoint, err := signin.NewDefaultEndpointResolver().ResolveEndpoint(region, signin.EndpointResolverOptions{})
+	endpoint, err := signin.NewDefaultEndpointResolverV2().ResolveEndpoint(context.Background(), signin.EndpointParameters{
+		Region:         ptr.String(region),
+		IsControlPlane: ptr.Bool(false),
+	})
 	if err != nil {
 		return "", fmt.Errorf("resolve AWS Sign-In endpoint: %w", err)
 	}
-	if endpoint.URL == "" {
+	url := endpoint.URI.String()
+	if url == "" {
 		return "", fmt.Errorf("resolve AWS Sign-In endpoint: empty endpoint URL")
 	}
-	return strings.TrimRight(endpoint.URL, "/"), nil
+	return strings.TrimRight(url, "/"), nil
 }
 
 func buildAuthorizationURL(baseURL, clientID, state, codeChallenge, redirectURI string) string {

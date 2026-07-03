@@ -91,6 +91,70 @@ func loadAWSConfig(ctx context.Context, cfg Config) (awssdk.Config, error) {
 	return awsCfg, nil
 }
 
+type DestroyInput struct {
+	StackName string
+	Wait      bool
+	Timeout   time.Duration
+	Progress  func(StackProgressEvent)
+}
+
+type DestroyOutput struct {
+	Action    string
+	Region    string
+	AccountID string
+	StackName string
+	Status    string
+}
+
+func (d *Deployer) Destroy(ctx context.Context, input DestroyInput) (*DestroyOutput, error) {
+	stackName := strings.TrimSpace(input.StackName)
+	if stackName == "" {
+		return nil, fmt.Errorf("stack name is required")
+	}
+	if input.Timeout == 0 {
+		input.Timeout = DefaultTimeout
+	}
+
+	identity, err := d.sts.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return nil, fmt.Errorf("check AWS identity: %w", err)
+	}
+
+	stack, err := d.describeStack(ctx, stackName)
+	if err != nil {
+		return nil, err
+	}
+	if stack == nil {
+		return nil, fmt.Errorf("describe CloudFormation stack %q: stack does not exist", stackName)
+	}
+
+	out := &DestroyOutput{
+		Action:    "deleted",
+		Region:    d.region,
+		AccountID: awssdk.ToString(identity.Account),
+		StackName: stackName,
+		Status:    string(stack.StackStatus),
+	}
+
+	operationStarted := time.Now().Add(-10 * time.Second)
+	if _, err := d.cfn.DeleteStack(ctx, &cloudformation.DeleteStackInput{
+		StackName: awssdk.String(stackName),
+	}); err != nil {
+		return nil, fmt.Errorf("delete CloudFormation stack %q: %w", stackName, err)
+	}
+
+	if !input.Wait {
+		out.Status = "DELETE_IN_PROGRESS"
+		return out, nil
+	}
+
+	if err := d.waitDelete(ctx, stackName, input.Timeout, operationStarted, input.Progress); err != nil {
+		return nil, err
+	}
+	out.Status = "DELETE_COMPLETE"
+	return out, nil
+}
+
 func (d *Deployer) Deploy(ctx context.Context, input DeployInput) (*DeployOutput, error) {
 	if err := validateInput(input); err != nil {
 		return nil, err
@@ -229,6 +293,57 @@ func (d *Deployer) waitUpdate(ctx context.Context, stackName string, timeout tim
 	return d.waitStack(ctx, stackName, timeout, since, progress, "update", map[string]bool{
 		string(cfntypes.StackStatusUpdateComplete): true,
 	})
+}
+
+func (d *Deployer) waitDelete(ctx context.Context, stackName string, timeout time.Duration, since time.Time, progress func(StackProgressEvent)) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	seenEvents := map[string]bool{}
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		if err := d.emitStackEvents(waitCtx, stackName, since, seenEvents, progress); err != nil {
+			return err
+		}
+		stack, err := d.describeStack(waitCtx, stackName)
+		if err != nil {
+			return err
+		}
+		if stack == nil {
+			if err := d.emitStackEvents(waitCtx, stackName, since, seenEvents, progress); err != nil {
+				return err
+			}
+			return nil
+		}
+		status := string(stack.StackStatus)
+		if status == string(cfntypes.StackStatusDeleteComplete) {
+			if err := d.emitStackEvents(waitCtx, stackName, since, seenEvents, progress); err != nil {
+				return err
+			}
+			return nil
+		}
+		if isFailedStackStatus(status) {
+			if err := d.emitStackEvents(waitCtx, stackName, since, seenEvents, progress); err != nil {
+				return err
+			}
+			reason := awssdk.ToString(stack.StackStatusReason)
+			if reason != "" {
+				return fmt.Errorf("wait for CloudFormation stack %q delete: stack status %s: %s", stackName, status, reason)
+			}
+			return fmt.Errorf("wait for CloudFormation stack %q delete: stack status %s", stackName, status)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("wait for CloudFormation stack %q delete: timed out after %s", stackName, timeout)
+			}
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Deployer) waitStack(ctx context.Context, stackName string, timeout time.Duration, since time.Time, progress func(StackProgressEvent), operation string, success map[string]bool) error {

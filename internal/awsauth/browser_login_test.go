@@ -13,9 +13,19 @@ import (
 	signintypes "github.com/aws/aws-sdk-go-v2/service/signin/types"
 )
 
+func TestSignInBaseURL(t *testing.T) {
+	got, err := signInBaseURL("us-east-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://us-east-1.signin.aws.amazon.com" {
+		t.Fatalf("unexpected sign-in base URL: %s", got)
+	}
+}
+
 func TestBuildAuthorizationURL(t *testing.T) {
-	got := buildAuthorizationURL("https://signin.us-east-1.amazonaws.com", sameDeviceClientID, "state-1", "challenge-1", "http://127.0.0.1:12345/oauth/callback")
-	if !strings.HasPrefix(got, "https://signin.us-east-1.amazonaws.com/v1/authorize?") {
+	got := buildAuthorizationURL("https://us-east-1.signin.aws.amazon.com", sameDeviceClientID, "state-1", "challenge-1", "http://127.0.0.1:12345/oauth/callback")
+	if !strings.HasPrefix(got, "https://us-east-1.signin.aws.amazon.com/v1/authorize?") {
 		t.Fatalf("unexpected authorization URL: %s", got)
 	}
 	for _, expected := range []string{

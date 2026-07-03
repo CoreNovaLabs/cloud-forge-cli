@@ -18,7 +18,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -58,11 +58,20 @@ type deployFlags struct {
 	allowedIP    string
 	imageID      string
 	latestAMIID  string
+	caddyTlsMode string
 	parameters   keyValueFlag
 	dryRun       bool
 	noWait       bool
 	timeout      time.Duration
 	progress     string
+}
+
+type deleteFlags struct {
+	region   string
+	profile  string
+	noWait   bool
+	timeout  time.Duration
+	progress string
 }
 
 type authFlags struct {
@@ -74,6 +83,7 @@ type authFlags struct {
 
 type awsStackDeployer interface {
 	Deploy(context.Context, awsdeploy.DeployInput) (*awsdeploy.DeployOutput, error)
+	Destroy(context.Context, awsdeploy.DestroyInput) (*awsdeploy.DestroyOutput, error)
 }
 
 var newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
@@ -136,19 +146,49 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 
 	switch args[0] {
 	case "search":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "search")
+			return 0
+		}
 		return runSearch(ctx, args[1:], stdout, stderr)
 	case "show":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "show")
+			return 0
+		}
 		return runShow(ctx, args[1:], stdout, stderr)
 	case "template":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "template")
+			return 0
+		}
 		return runTemplate(ctx, args[1:], stdout, stderr)
 	case "deploy":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "deploy")
+			return 0
+		}
 		return runDeploy(ctx, args[1:], stdout, stderr)
+	case "delete", "destroy":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "delete")
+			return 0
+		}
+		return runDelete(ctx, args[1:], stdout, stderr)
 	case "auth":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "auth aws")
+			return 0
+		}
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "cloud-forge %s\n", Version)
 		return 0
 	case "help", "-h", "--help":
+		if len(args) > 1 {
+			printCommandHelp(stdout, args[1])
+			return 0
+		}
 		printUsage(stdout)
 		return 0
 	default:
@@ -205,9 +245,92 @@ func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		StatusOnly: statusOnly,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%v\n", err)
+		printUserError(stderr, err)
 		return 1
 	}
+	return 0
+}
+
+func runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	started := time.Now()
+	flags := newFlagSet("delete", stderr)
+	common := addCommonFlags(flags)
+	del := addDeleteFlags(flags)
+	positionals, err := parseInterspersed(flags, args)
+	if err != nil {
+		return 2
+	}
+	if len(positionals) != 1 {
+		fmt.Fprintln(stderr, "usage: cloud-forge delete <stack-name> --cloud aws [--region us-east-1]")
+		return 2
+	}
+	if common.cloud == "" {
+		common.cloud = "aws"
+	}
+	if common.cloud != "aws" {
+		fmt.Fprintf(stderr, "delete supports AWS only in this release. Use --cloud aws.\n")
+		return 2
+	}
+	stackName := positionals[0]
+	if err := validateStackName(stackName); err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+	progressMode, err := normalizeProgressMode(del.progress)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+	del.progress = progressMode
+
+	deployer, err := newAWSDeployer(ctx, awsdeploy.Config{
+		Region:  del.region,
+		Profile: del.profile,
+	})
+	if err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "destroy",
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "aws_config",
+		})
+		printUserError(stderr, err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Deleting AWS stack %s\n", stackName)
+	var progress func(awsdeploy.StackProgressEvent)
+	if !del.noWait && del.progress == "plain" {
+		progress = printStackProgress(stdout)
+	}
+
+	result, err := deployer.Destroy(ctx, awsdeploy.DestroyInput{
+		StackName: stackName,
+		Wait:      !del.noWait,
+		Timeout:   del.timeout,
+		Progress:  progress,
+	})
+	if err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "destroy",
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "aws_delete",
+		})
+		printUserError(stderr, err)
+		return 1
+	}
+
+	track(common, ctx, telemetry.Event{
+		Event:      "destroy",
+		Cloud:      common.cloud,
+		Status:     "success",
+		DurationMS: durationMS(started),
+	})
+
+	printDeleteResult(stdout, result)
 	return 0
 }
 
@@ -228,7 +351,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		common.cloud = "aws"
 	}
 	if common.cloud != "aws" {
-		fmt.Fprintf(stderr, "deploy currently supports only --cloud aws, got %q\n", common.cloud)
+		fmt.Fprintf(stderr, "Deploy supports AWS only in this release. Use --cloud aws.\n")
 		return 2
 	}
 	keyNameFlagSet := flagWasSet(flags, "key") || flagWasSet(flags, "key-name")
@@ -263,7 +386,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			DurationMS: durationMS(started),
 			ErrorCode:  "app_not_found",
 		})
-		fmt.Fprintf(stderr, "%v\n", err)
+		printUserError(stderr, err)
 		return 1
 	}
 	if !contains(app.Clouds, "aws") {
@@ -291,7 +414,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			DurationMS: durationMS(started),
 			ErrorCode:  "template_fetch",
 		})
-		fmt.Fprintf(stderr, "%v\n", err)
+		printUserError(stderr, err)
 		return 1
 	}
 
@@ -339,7 +462,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			DurationMS: durationMS(started),
 			ErrorCode:  "aws_config",
 		})
-		fmt.Fprintf(stderr, "%v\n", err)
+		printUserError(stderr, err)
 		return 1
 	}
 
@@ -362,9 +485,13 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 				DurationMS: durationMS(started),
 				ErrorCode:  "aws_key_pair",
 			})
-			fmt.Fprintf(stderr, "%v\n", err)
+			printUserError(stderr, err)
 			return 1
 		}
+	}
+
+	if !deploy.dryRun {
+		printDeployWarnings(stderr, app, parameters)
 	}
 
 	fmt.Fprintf(stdout, "Deploying %s to AWS stack %s\n", app.ID, stackName)
@@ -402,7 +529,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			DurationMS: durationMS(started),
 			ErrorCode:  "aws_deploy",
 		})
-		fmt.Fprintf(stderr, "%v\n", err)
+		printUserError(stderr, err)
 		return 1
 	}
 
@@ -416,6 +543,9 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	})
 
 	printDeployResult(stdout, result)
+	if !deploy.dryRun {
+		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aws --region %s\n", stackName, result.Region)
+	}
 	return 0
 }
 
@@ -521,7 +651,7 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Description: %s\n", app.Desc)
 	fmt.Fprintf(stdout, "Version:     %s\n", app.Version)
 	fmt.Fprintf(stdout, "Category:    %s\n", app.Category)
-	fmt.Fprintf(stdout, "Clouds:      %s\n", strings.Join(app.Clouds, ", "))
+	fmt.Fprintf(stdout, "Clouds:      %s\n", formatCloudSupport(app.Clouds))
 	if app.Price != "" {
 		fmt.Fprintf(stdout, "Price:       %s\n", app.Price)
 	}
@@ -546,10 +676,28 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 				secret = " secret"
 			}
 			fmt.Fprintf(stdout, "  %-16s %-8s %s%s\n", name, required, param.Type, secret)
+			if def := defaultParamValue(param, "aws"); def != "" {
+				fmt.Fprintf(stdout, "    default (aws): %s\n", def)
+			}
+			if options := paramOptions(param, "aws"); len(options) > 0 {
+				fmt.Fprintf(stdout, "    options (aws): %s\n", strings.Join(options, ", "))
+			}
 		}
 	}
 
 	return 0
+}
+
+func formatCloudSupport(clouds []string) string {
+	parts := make([]string, 0, len(clouds))
+	for _, cloud := range clouds {
+		label := cloud
+		if cloud == "aliyun" {
+			label += " (deploy not supported yet)"
+		}
+		parts = append(parts, label)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func runTemplate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -657,6 +805,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.allowedIP, "allowed-ip", "", "CloudFormation AllowedIP parameter")
 	flags.StringVar(&deploy.imageID, "image-id", "", "CloudFormation ImageId parameter")
 	flags.StringVar(&deploy.latestAMIID, "latest-ami-id", "", "CloudFormation LatestAmiId parameter")
+	flags.StringVar(&deploy.caddyTlsMode, "caddy-tls-mode", "", "CloudFormation CaddyTlsMode parameter")
 	flags.Var(deploy.parameters, "param", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.Var(deploy.parameters, "parameter", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.BoolVar(&deploy.dryRun, "dry-run", false, "validate template and parameters without creating or updating a stack")
@@ -664,6 +813,20 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.DurationVar(&deploy.timeout, "timeout", deploy.timeout, "maximum time to wait for stack completion")
 	flags.StringVar(&deploy.progress, "progress", "plain", "deployment progress output: plain or none")
 	return deploy
+}
+
+func addDeleteFlags(flags *flag.FlagSet) *deleteFlags {
+	del := &deleteFlags{
+		region:   defaultAWSRegion,
+		timeout:  awsdeploy.DefaultTimeout,
+		progress: "plain",
+	}
+	flags.StringVar(&del.region, "region", del.region, "AWS region")
+	flags.StringVar(&del.profile, "profile", "", "AWS shared config profile")
+	flags.BoolVar(&del.noWait, "no-wait", false, "return immediately after starting stack deletion")
+	flags.DurationVar(&del.timeout, "timeout", del.timeout, "maximum time to wait for stack deletion")
+	flags.StringVar(&del.progress, "progress", del.progress, "deletion progress output: plain or none")
+	return del
 }
 
 func addAuthFlags(flags *flag.FlagSet) *authFlags {
@@ -783,24 +946,6 @@ func flagTakesValue(flags *flag.FlagSet, arg string) bool {
 	}
 	boolValue, ok := f.Value.(interface{ IsBoolFlag() bool })
 	return !ok || !boolValue.IsBoolFlag()
-}
-
-func printUsage(w io.Writer) {
-	fmt.Fprintf(w, `cloud-forge %s
-
-Usage:
-  cloud-forge search [query] [--cloud aws|aliyun] [--category name]
-  cloud-forge show <app>
-  cloud-forge template <app> --cloud aws|aliyun
-  cloud-forge deploy <app> --cloud aws [--region us-east-1] [--param Name=Value]
-  cloud-forge auth aws [status]
-  cloud-forge version
-
-Environment:
-  CLOUD_FORGE_STORE_URL  Catalog index URL or local file path.
-  CLOUD_FORGE_TELEMETRY  Set to 0, false, off, or disabled to disable telemetry.
-
-`, Version)
 }
 
 func cloudRequired(param *store.CloudParam) bool {
@@ -928,6 +1073,7 @@ func buildAWSDeployParameters(app *store.App, deploy *deployFlags) (map[string]s
 	setParameter(params, "AllowedIP", deploy.allowedIP)
 	setParameter(params, "ImageId", deploy.imageID)
 	setParameter(params, "LatestAmiId", deploy.latestAMIID)
+	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
 	for name, value := range deploy.parameters {
 		params[name] = value
 	}
