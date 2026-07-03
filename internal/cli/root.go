@@ -655,6 +655,16 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if app.Price != "" {
 		fmt.Fprintf(stdout, "Price:       %s\n", app.Price)
 	}
+	if len(app.CostNotice) > 0 {
+		fmt.Fprintln(stdout, "Cost notice:")
+		for _, line := range app.CostNotice {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			fmt.Fprintf(stdout, "  %s\n", line)
+		}
+	}
 
 	if len(app.Images) > 0 {
 		fmt.Fprintln(stdout, "\nImages:")

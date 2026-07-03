@@ -37,6 +37,9 @@ func TestSearchUsesLocalCatalog(t *testing.T) {
 	if !strings.Contains(stdout.String(), "gitea") {
 		t.Fatalf("expected search output to include gitea, got: %s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "free") {
+		t.Fatalf("expected search output to include free price, got: %s", stdout.String())
+	}
 }
 
 func TestTemplateReadsLocalTemplateBeforeRemoteURL(t *testing.T) {
@@ -111,6 +114,37 @@ func TestTemplateTracksTelemetry(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for telemetry")
+	}
+}
+
+func TestShowPrintsCostNotice(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"show",
+		"gitea",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Price:       free",
+		"Cost notice:",
+		"This deploy has base costs.",
+		"Cloud Forge runtime AMI fee applies.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected show output to include %q, got: %s", want, out)
+		}
 	}
 }
 
@@ -500,6 +534,11 @@ func writeTestCatalog(t *testing.T) string {
     "tags": ["git"],
     "clouds": ["aws"],
     "version": "1.0.0",
+    "price": "free",
+    "cost_notice": [
+      "This deploy has base costs.",
+      "Cloud Forge runtime AMI fee applies. AWS resources such as EC2, EBS, public IPv4/Elastic IP, and data transfer are billed separately by AWS."
+    ],
     "images": {"aws": "ami-0123456789abcdef0"},
     "templates": {
       "aws": {

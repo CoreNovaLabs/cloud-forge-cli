@@ -29,6 +29,7 @@ type App struct {
 	Version       string                     `json:"version"`
 	MinCLIVersion string                     `json:"min_cli_version,omitempty"`
 	Price         string                     `json:"price,omitempty"`
+	CostNotice    []string                   `json:"cost_notice,omitempty"`
 	Images        map[string]string          `json:"images"`
 	Templates     map[string]TemplateRef     `json:"templates"`
 	Params        map[string]ParamDefinition `json:"params,omitempty"`

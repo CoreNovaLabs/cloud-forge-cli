@@ -10,7 +10,7 @@ import (
 )
 
 func printDeployWarnings(w io.Writer, app *store.App, params map[string]string) {
-	fmt.Fprintln(w, "Warning: This deploy creates billable AWS resources such as EC2 instances and Elastic IPs.")
+	fmt.Fprintln(w, "Warning: This deploy creates billable AWS resources such as EC2, EBS, public IPv4/Elastic IP, and data transfer.")
 	if app != nil && app.Price != "" && !strings.EqualFold(app.Price, "free") {
 		fmt.Fprintf(w, "Warning: %s may incur AWS Marketplace software fees (%s) in addition to infrastructure costs.\n", app.Name, app.Price)
 	}
