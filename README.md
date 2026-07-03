@@ -6,13 +6,201 @@
 
 Cloud Forge CLI is the command-line client for the Cloud Forge catalog. The current foundation supports catalog search, app inspection, template download, and AWS CloudFormation deployment.
 
-## Build
+## What It Does
 
-```bash
-go build ./cmd/cloud-forge
+Cloud Forge CLI helps you discover and deploy apps from the Cloud Forge catalog.
+
+For AWS, it can:
+
+- search available apps
+- show app metadata
+- render the CloudFormation template for an app
+- create or update an AWS CloudFormation stack
+- show CloudFormation resource progress while deploying
+- reuse a local SSH key for EC2 access
+- print stack outputs such as service URL, public IP, instance ID, AMI ID, and region when the template provides them
+
+AWS deploys default to `us-east-1`.
+
+## Install
+
+Download a release archive for your operating system from:
+
+```text
+https://github.com/CoreNovaLabs/cloud-forge-cli/releases
 ```
 
-## Catalog
+Unpack it and put the `cloud-forge` binary somewhere on your `PATH`.
+
+Verify the install:
+
+```bash
+cloud-forge version
+```
+
+You can also build from source. See [Build From Source](#build-from-source).
+
+## AWS Credentials
+
+Cloud Forge CLI uses the AWS SDK for Go v2. It does not shell out to the AWS CLI.
+
+You do not need to install the AWS CLI, but you do need AWS credentials.
+
+Supported credential sources include:
+
+- `~/.aws/credentials`
+- `~/.aws/config`
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+- `AWS_PROFILE`
+- AWS SSO or assume-role profiles supported by the AWS SDK
+- EC2/ECS instance or task roles
+
+Example with an AWS profile:
+
+```bash
+export AWS_PROFILE=default
+```
+
+Example with environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+```
+
+AWS deploys default to `us-east-1`; override it when needed:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws --region us-west-2
+```
+
+For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
+
+## Quick Start
+
+Search the catalog:
+
+```bash
+cloud-forge search nginx --cloud aws
+```
+
+Show an app:
+
+```bash
+cloud-forge show hello-nginx
+```
+
+Preview the AWS template:
+
+```bash
+cloud-forge template hello-nginx --cloud aws
+```
+
+Validate a deployment without creating resources:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws --dry-run
+```
+
+Deploy to AWS:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --stack-name cloud-forge-hello-nginx \
+  --instance-type t3.micro \
+  --allowed-ip 1.2.3.4/32
+```
+
+During deployment, the CLI prints CloudFormation progress:
+
+```text
+[12:01:08] AWS::EC2::SecurityGroup HelloSecurityGroup CREATE_COMPLETE
+[12:01:15] AWS::EC2::Instance HelloInstance CREATE_IN_PROGRESS
+```
+
+When the stack completes, the CLI prints the outputs returned by the template.
+
+## SSH Key Behavior
+
+By default, AWS deploys use a local reusable SSH key:
+
+```text
+~/.cloud-forge/keys/aws/cloud-forge-default.pem
+```
+
+The CLI creates this private key on first use with `0600` permissions and imports the public key into EC2 as `cloud-forge-default` when the target AWS region does not already have that key pair. The same local private key is reused across regions.
+
+Use an existing EC2 key pair instead:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --key-name my-key
+```
+
+Disable SSH key injection:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --ssh-key none
+```
+
+Use a custom local private key path:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
+```
+
+## Cleanup
+
+Cloud Forge CLI v0.1.0 creates or updates stacks, but it does not yet provide a `delete` command.
+
+To remove a deployment, delete the CloudFormation stack in the AWS Console.
+
+If you use the AWS CLI, the equivalent command is:
+
+```bash
+aws cloudformation delete-stack --region us-east-1 --stack-name cloud-forge-hello-nginx
+```
+
+Deleting the stack removes the EC2 instance, Elastic IP, security group, and related stack resources created by the template.
+
+The reusable local private key is not deleted automatically:
+
+```text
+~/.cloud-forge/keys/aws/cloud-forge-default.pem
+```
+
+## Common Options
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --region us-east-1 \
+  --stack-name cloud-forge-hello-nginx \
+  --instance-type t3.micro \
+  --allowed-ip 1.2.3.4/32 \
+  --progress plain
+```
+
+Disable progress output:
+
+```bash
+cloud-forge deploy hello-nginx --cloud aws \
+  --progress none
+```
+
+Template parameters can be passed either with dedicated flags or repeated `--param` flags:
+
+```bash
+cloud-forge deploy gitea --cloud aws \
+  --region us-east-1 \
+  --param KeyName=my-key \
+  --param ImageId=ami-0123456789abcdef0
+```
+
+Supported dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, and `--latest-ami-id`.
+
+## Catalog Reference
 
 By default the CLI reads:
 
@@ -28,7 +216,7 @@ For local development:
 export CLOUD_FORGE_STORE_URL="file:///absolute/path/to/cloud-forge-catalog/index/apps.json"
 ```
 
-## Commands
+## Command Reference
 
 ```bash
 cloud-forge search hello --cloud aws
@@ -76,39 +264,6 @@ cloud-forge deploy hello-nginx --cloud aws \
   --progress none
 ```
 
-By default, AWS deploys use a local reusable SSH key:
-
-```text
-~/.cloud-forge/keys/aws/cloud-forge-default.pem
-```
-
-The CLI creates this private key on first use with `0600` permissions and imports the public key into EC2 as `cloud-forge-default` when the target AWS region does not already have that key pair. The same local private key is reused across regions.
-
-Use an existing EC2 key pair instead:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --key-name my-key
-```
-
-Disable SSH key injection:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --ssh-key none
-```
-
-Template parameters can be passed either with dedicated flags or repeated `--param` flags:
-
-```bash
-cloud-forge deploy gitea --cloud aws \
-  --region us-east-1 \
-  --param KeyName=my-key \
-  --param ImageId=ami-0123456789abcdef0
-```
-
-Supported dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, and `--latest-ami-id`.
-
 ## Telemetry
 
 The CLI sends anonymous, non-blocking usage events to:
@@ -129,6 +284,12 @@ Use a different endpoint for local testing:
 
 ```bash
 export CLOUD_FORGE_TELEMETRY_ENDPOINT="http://127.0.0.1:8787/v1/events"
+```
+
+## Build From Source
+
+```bash
+go build ./cmd/cloud-forge
 ```
 
 ## Development
