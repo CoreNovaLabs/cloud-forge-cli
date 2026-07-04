@@ -200,6 +200,86 @@ func TestHTTPStore_ZeroCacheTTLForcesRefresh(t *testing.T) {
 	}
 }
 
+func TestHTTPStore_RefreshOnSearchMiss(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		appID := "gitea"
+		if requests > 1 {
+			appID = "freshrss"
+		}
+		fmt.Fprintf(w, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": %q,
+    "name": %q,
+    "desc": "test app",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/%s/templates/aws.yaml"}}
+  }]
+}`, appID, appID, appID)
+	}))
+	defer server.Close()
+
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	indexURL := server.URL + "/index/apps.json"
+
+	first := store.NewHTTPStore(store.Config{
+		IndexURL: indexURL,
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := first.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if first.IndexFromCache() {
+		t.Fatal("expected first sync to fetch from network")
+	}
+
+	second := store.NewHTTPStore(store.Config{
+		IndexURL: indexURL,
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := second.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !second.IndexFromCache() {
+		t.Fatal("expected second sync to use cache")
+	}
+
+	apps, err := second.List(store.Filter{Query: "freshrss"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 0 {
+		t.Fatalf("expected no matches in stale cache, got %#v", apps)
+	}
+
+	if err := second.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if second.IndexFromCache() {
+		t.Fatal("expected refresh to load from network")
+	}
+
+	apps, err = second.List(store.Filter{Query: "freshrss"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0].ID != "freshrss" {
+		t.Fatalf("expected freshrss after refresh, got %#v", apps)
+	}
+	if requests != 2 {
+		t.Fatalf("expected 2 index requests, got %d", requests)
+	}
+}
+
 func TestHTTPStore_TemplateBaseURLFallback(t *testing.T) {
 	templatePrimary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "template unavailable", http.StatusBadGateway)

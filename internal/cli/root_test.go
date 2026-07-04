@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -40,6 +42,72 @@ func TestSearchUsesLocalCatalog(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "free") {
 		t.Fatalf("expected search output to include free price, got: %s", stdout.String())
+	}
+}
+
+func TestSearchRefreshesCatalogOnMiss(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		appID := "gitea"
+		if requests > 1 {
+			appID = "freshrss"
+		}
+		fmt.Fprintf(w, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": %q,
+    "name": %q,
+    "desc": "test app",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "price": "free",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/%s/templates/aws.yaml"}}
+  }]
+}`, appID, appID, appID)
+	}))
+	defer server.Close()
+
+	cacheDir := t.TempDir()
+	indexURL := server.URL + "/index/apps.json"
+
+	warm := Run(context.Background(), []string{
+		"search", "gitea",
+		"--store-url", indexURL,
+		"--cache-dir", cacheDir,
+	}, io.Discard, io.Discard)
+	if warm != 0 {
+		t.Fatalf("warmup search exit code %d", warm)
+	}
+	if requests != 1 {
+		t.Fatalf("expected 1 index request after warmup, got %d", requests)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"search", "freshrss",
+		"--store-url", indexURL,
+		"--cache-dir", cacheDir,
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "refreshing index") {
+		t.Fatalf("expected refresh notice on stderr, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "freshrss") {
+		t.Fatalf("expected search output to include freshrss, got stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if requests != 2 {
+		t.Fatalf("expected 2 index requests after refresh-on-miss, got %d", requests)
 	}
 }
 

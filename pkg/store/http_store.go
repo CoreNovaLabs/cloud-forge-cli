@@ -19,6 +19,7 @@ type HTTPStore struct {
 	catalog        *Catalog
 	catalogBaseURL string
 	httpClient     *http.Client
+	indexFromCache bool
 }
 
 func NewHTTPStore(cfg Config) *HTTPStore {
@@ -41,10 +42,28 @@ func (s *HTTPStore) Sync(ctx context.Context) error {
 		catalog, err := s.loadCatalogFromFile(cachePath)
 		if err == nil {
 			s.catalog = catalog
+			s.indexFromCache = true
 			return nil
 		}
 	}
 
+	return s.refreshIndex(ctx)
+}
+
+// Refresh 忽略缓存 TTL，强制重新拉取 index。
+func (s *HTTPStore) Refresh(ctx context.Context) error {
+	if s.cfg.IndexURL == "" {
+		return fmt.Errorf("store: index URL is required")
+	}
+	return s.refreshIndex(ctx)
+}
+
+// IndexFromCache reports whether the last Sync loaded index/apps.json from local cache.
+func (s *HTTPStore) IndexFromCache() bool {
+	return s.indexFromCache
+}
+
+func (s *HTTPStore) refreshIndex(ctx context.Context) error {
 	body, indexURL, err := s.fetchIndex(ctx)
 	if err != nil {
 		return err
@@ -55,6 +74,7 @@ func (s *HTTPStore) Sync(ctx context.Context) error {
 		return fmt.Errorf("store: parse catalog: %w", err)
 	}
 
+	cachePath := s.indexCachePath()
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
 		return err
 	}
@@ -64,6 +84,7 @@ func (s *HTTPStore) Sync(ctx context.Context) error {
 
 	s.catalog = &catalog
 	s.catalogBaseURL = catalogBaseURLFromIndexURL(indexURL)
+	s.indexFromCache = false
 	return nil
 }
 

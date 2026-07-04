@@ -973,7 +973,34 @@ func loadApps(ctx context.Context, common *commonFlags, filter store.Filter, std
 		fmt.Fprintf(stderr, "%v\n", err)
 		return nil, 1
 	}
+	if len(apps) == 0 {
+		if refreshed, refreshErr := refreshStoreOnMiss(ctx, st, stderr); refreshErr != nil {
+			fmt.Fprintf(stderr, "warning: refresh catalog after empty search: %v\n", refreshErr)
+		} else if refreshed {
+			apps, err = st.List(filter)
+			if err != nil {
+				fmt.Fprintf(stderr, "%v\n", err)
+				return nil, 1
+			}
+		}
+	}
 	return apps, 0
+}
+
+func refreshStoreOnMiss(ctx context.Context, st store.Store, stderr io.Writer) (bool, error) {
+	type refreshable interface {
+		IndexFromCache() bool
+		Refresh(context.Context) error
+	}
+	r, ok := st.(refreshable)
+	if !ok || !r.IndexFromCache() {
+		return false, nil
+	}
+	fmt.Fprintln(stderr, "No matches in cached catalog; refreshing index...")
+	if err := r.Refresh(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func loadStore(ctx context.Context, common *commonFlags, stderr io.Writer) (store.Store, int) {
