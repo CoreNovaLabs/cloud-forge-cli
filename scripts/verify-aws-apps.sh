@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CATALOG_ROOT="$(cd "$ROOT/../cloud-forge-catalog" && pwd)"
 cd "$ROOT"
 
 export CLOUD_FORGE_TELEMETRY=0
-export CLOUD_FORGE_STORE_URL="${CLOUD_FORGE_STORE_URL:-file:///Users/zhengyihui/代码/开源项目/cloud-forge/cloud-forge-catalog/index/apps.json}"
+export CLOUD_FORGE_STORE_URL="${CLOUD_FORGE_STORE_URL:-file://${CATALOG_ROOT}/index/apps.json}"
 
 poll_health() {
   local url="$1"
