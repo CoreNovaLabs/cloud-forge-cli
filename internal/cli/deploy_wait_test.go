@@ -9,21 +9,25 @@ import (
 	"time"
 )
 
-func TestAliyunProbeURLs(t *testing.T) {
-	urls := aliyunProbeURLs(map[string]string{
+func TestProbeURLs(t *testing.T) {
+	urls := probeURLs(map[string]string{
 		"ServiceURL": "https://203.0.113.10/",
 	})
 	if len(urls) != 2 || urls[0] != "https://203.0.113.10/health" {
 		t.Fatalf("unexpected urls: %#v", urls)
 	}
 
-	urls = aliyunProbeURLs(map[string]string{"PublicIP": "203.0.113.11"})
+	urls = probeURLs(map[string]string{"PublicIP": "203.0.113.11"})
 	if urls[0] != "https://203.0.113.11/health" {
 		t.Fatalf("unexpected public ip urls: %#v", urls)
 	}
+
+	if got := probeURLs(map[string]string{}); got != nil {
+		t.Fatalf("expected nil urls for empty outputs, got: %#v", got)
+	}
 }
 
-func TestAliyunServiceReady(t *testing.T) {
+func TestServiceReady(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusOK)
@@ -34,15 +38,15 @@ func TestAliyunServiceReady(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if !aliyunServiceReady(context.Background(), server.URL+"/health") {
+	if !serviceReady(context.Background(), server.URL+"/health") {
 		t.Fatal("expected /health to be ready")
 	}
-	if aliyunServiceReady(context.Background(), server.URL+"/missing") {
+	if serviceReady(context.Background(), server.URL+"/missing") {
 		t.Fatal("expected missing path to be not ready")
 	}
 }
 
-func TestWaitAliyunServiceReady(t *testing.T) {
+func TestWaitServiceReady(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -55,12 +59,12 @@ func TestWaitAliyunServiceReady(t *testing.T) {
 	}))
 	defer server.Close()
 
-	oldInterval := aliyunBootstrapPollInterval
-	aliyunBootstrapPollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { aliyunBootstrapPollInterval = oldInterval })
+	oldInterval := bootstrapPollInterval
+	bootstrapPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { bootstrapPollInterval = oldInterval })
 
 	var stdout bytes.Buffer
-	err := waitAliyunServiceReady(
+	err := waitServiceReady(
 		context.Background(),
 		&stdout,
 		map[string]string{"ServiceURL": server.URL},
@@ -68,24 +72,24 @@ func TestWaitAliyunServiceReady(t *testing.T) {
 		true,
 	)
 	if err != nil {
-		t.Fatalf("waitAliyunServiceReady: %v", err)
+		t.Fatalf("waitServiceReady: %v", err)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("Service is ready.")) {
 		t.Fatalf("expected ready message, got: %s", stdout.String())
 	}
 }
 
-func TestWaitAliyunServiceReadyTimeout(t *testing.T) {
+func TestWaitServiceReadyTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not yet", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
-	oldInterval := aliyunBootstrapPollInterval
-	aliyunBootstrapPollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { aliyunBootstrapPollInterval = oldInterval })
+	oldInterval := bootstrapPollInterval
+	bootstrapPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { bootstrapPollInterval = oldInterval })
 
-	err := waitAliyunServiceReady(
+	err := waitServiceReady(
 		context.Background(),
 		ioDiscard{},
 		map[string]string{"ServiceURL": server.URL},
@@ -94,6 +98,19 @@ func TestWaitAliyunServiceReadyTimeout(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected timeout error")
+	}
+}
+
+func TestWaitServiceReadyMissingOutputs(t *testing.T) {
+	err := waitServiceReady(
+		context.Background(),
+		ioDiscard{},
+		map[string]string{},
+		time.Now().Add(time.Second),
+		false,
+	)
+	if err == nil {
+		t.Fatal("expected error when outputs are missing")
 	}
 }
 

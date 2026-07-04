@@ -264,6 +264,7 @@ func TestDeployAWSAutoSSHKeyEnsuresDefaultKeyPair(t *testing.T) {
 		fileURL(indexPath),
 		"--cache-dir",
 		t.TempDir(),
+		"--no-wait-ready",
 	}, &stdout, &stderr)
 
 	if code != 0 {
@@ -329,6 +330,7 @@ func TestDeployAWSPrintsCloudFormationProgress(t *testing.T) {
 		t.TempDir(),
 		"--param",
 		"KeyName=my-key",
+		"--no-wait-ready",
 	}, &stdout, &stderr)
 
 	if code != 0 {
@@ -374,6 +376,7 @@ func TestDeployAWSProgressNoneDisablesProgress(t *testing.T) {
 		"KeyName=my-key",
 		"--progress",
 		"none",
+		"--no-wait-ready",
 	}, &stdout, &stderr)
 
 	if code != 0 {
@@ -421,6 +424,120 @@ func TestDeployAWSRequiresCatalogParameters(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "missing required aws parameter(s): RequiredToken") {
 		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestDeployAWSWaitsForReadyByDefault(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		return fakeAWSDeployer{
+			input: &awsdeploy.DeployInput{},
+			output: &awsdeploy.DeployOutput{
+				Action:    "created",
+				Region:    "us-east-1",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-gitea",
+				Status:    "CREATE_COMPLETE",
+				Outputs:   map[string]string{"ServiceURL": server.URL},
+			},
+		}, nil
+	}
+	t.Cleanup(func() { newAWSDeployer = oldNewAWSDeployer })
+
+	oldInterval := bootstrapPollInterval
+	bootstrapPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { bootstrapPollInterval = oldInterval })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"gitea",
+		"--cloud",
+		"aws",
+		"--region",
+		"us-east-1",
+		"--stack-name",
+		"test-gitea",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--ssh-key",
+		"none",
+		"--timeout",
+		"30s",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("expected ready message, got: %s", stdout.String())
+	}
+}
+
+func TestDeployAWSNoWaitReadySkipsProbe(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		return fakeAWSDeployer{
+			input: &awsdeploy.DeployInput{},
+			output: &awsdeploy.DeployOutput{
+				Action:    "created",
+				Region:    "us-east-1",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-gitea",
+				Status:    "CREATE_COMPLETE",
+				Outputs:   map[string]string{"ServiceURL": "https://127.0.0.1:1"},
+			},
+		}, nil
+	}
+	t.Cleanup(func() { newAWSDeployer = oldNewAWSDeployer })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"gitea",
+		"--cloud",
+		"aws",
+		"--region",
+		"us-east-1",
+		"--stack-name",
+		"test-gitea",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--ssh-key",
+		"none",
+		"--no-wait-ready",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("did not expect bootstrap wait, got: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "app bootstrap may still take") {
+		t.Fatalf("expected bootstrap note, got: %s", stdout.String())
 	}
 }
 
@@ -508,9 +625,9 @@ func TestDeployAliyunWaitsForReadyByDefault(t *testing.T) {
 	}
 	t.Cleanup(func() { newAliyunDeployer = oldNewAliyunDeployer })
 
-	oldInterval := aliyunBootstrapPollInterval
-	aliyunBootstrapPollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { aliyunBootstrapPollInterval = oldInterval })
+	oldInterval := bootstrapPollInterval
+	bootstrapPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { bootstrapPollInterval = oldInterval })
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -685,14 +802,20 @@ type fakeAWSDeployer struct {
 	input          *awsdeploy.DeployInput
 	destroyInput   *awsdeploy.DestroyInput
 	progressEvents []awsdeploy.StackProgressEvent
+	output         *awsdeploy.DeployOutput
 }
 
 func (f fakeAWSDeployer) Deploy(ctx context.Context, input awsdeploy.DeployInput) (*awsdeploy.DeployOutput, error) {
-	*f.input = input
+	if f.input != nil {
+		*f.input = input
+	}
 	for _, event := range f.progressEvents {
 		if input.Progress != nil {
 			input.Progress(event)
 		}
+	}
+	if f.output != nil {
+		return f.output, nil
 	}
 	return &awsdeploy.DeployOutput{
 		Action:    "validated",

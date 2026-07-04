@@ -218,7 +218,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 	if !deploy.dryRun && !deploy.noWait && waitReady {
 		deadline := started.Add(deploy.timeout)
 		showProgress := deploy.progress == "plain"
-		if err := waitAliyunServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
+		if err := waitServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
 			printAliyunDeployResult(stdout, result)
 			fmt.Fprintf(stderr, "\n%v\n", err)
 			return 1

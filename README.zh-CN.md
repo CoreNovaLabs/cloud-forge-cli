@@ -373,11 +373,13 @@ cloud-forge deploy hello-nginx --cloud aws \
   --progress none
 ```
 
+栈达到 `CREATE_COMPLETE` 后，`deploy` 会继续轮询 `ServiceURL`（`/health` 与 `/`），直到应用响应或达到 `--timeout`。首次启动仍需拉取镜像并申请 TLS 证书，这一步用于填平“栈完成”与“服务可访问”之间的空档。加 `--no-wait-ready` 可在栈创建完成后立即返回。
+
 ## Aliyun 部署（香港）
 
 Aliyun v1 使用 ROS 创建 ECS + EIP，并在实例首次启动时通过 UserData 从 catalog 拉取 bootstrap 脚本安装 Docker/Caddy 与应用容器。与 AWS 预烘焙 AMI 不同，首次可用时间约 **8～15 分钟**。
 
-**默认行为：** `deploy` 在 ROS 栈 `CREATE_COMPLETE` 之后会继续轮询 `ServiceURL`（`/health` 与 `/`），直到应用就绪或达到 `--timeout`。若只需创建栈、自行等待 bootstrap，可加 `--no-wait-ready`。
+**默认行为：** `deploy` 在 ROS 栈 `CREATE_COMPLETE` 之后会继续轮询 `ServiceURL`（`/health` 与 `/`），直到应用就绪或达到 `--timeout`，与 AWS 一致。若只需创建栈、自行等待 bootstrap，可加 `--no-wait-ready`。
 
 仅支持 **`cn-hongkong`**。需要预先创建 VPC、VSwitch 和 SSH KeyPair。
 

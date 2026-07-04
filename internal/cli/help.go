@@ -127,9 +127,9 @@ Flags:
   --allowed-ip <cidr>          Restrict SSH to this CIDR
   --dry-run                    Validate template and parameters without creating resources
   --no-wait                    Return after starting the stack operation
-  --wait-ready                 Aliyun: wait for app bootstrap after stack completes (default true)
-  --no-wait-ready              Aliyun: return after stack completes without waiting for the endpoint
-  --timeout <duration>         Maximum wait time (default: 30m)
+  --wait-ready                 Wait for app bootstrap after stack completes (default true)
+  --no-wait-ready              Return after stack completes without waiting for the endpoint
+  --timeout <duration>         Maximum wait time for stack completion and app bootstrap (default: 30m)
   --progress <plain|none>      Show stack progress events (default: plain)
   --ssh-key <auto|none>        Manage a local SSH key automatically (AWS only, default: auto)
   --ssh-key-path <path>        Private key path for --ssh-key auto (AWS only)

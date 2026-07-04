@@ -606,6 +606,19 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		DurationMS: durationMS(started),
 	})
 
+	waitReady := deploy.waitReady && !deploy.noWaitReady
+	if !deploy.dryRun && !deploy.noWait && waitReady {
+		deadline := started.Add(deploy.timeout)
+		showProgress := deploy.progress == "plain"
+		if err := waitServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
+			printDeployResult(stdout, result)
+			fmt.Fprintf(stderr, "\n%v\n", err)
+			return 1
+		}
+	} else if !deploy.dryRun && !deploy.noWait {
+		fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take a few minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+	}
+
 	printDeployResult(stdout, result)
 	if !deploy.dryRun {
 		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aws --region %s\n", stackName, result.Region)
@@ -878,9 +891,9 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.Var(deploy.parameters, "parameter", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.BoolVar(&deploy.dryRun, "dry-run", false, "validate template and parameters without creating or updating a stack")
 	flags.BoolVar(&deploy.noWait, "no-wait", false, "return immediately after starting stack create or update")
-	flags.BoolVar(&deploy.waitReady, "wait-ready", true, "Aliyun: wait for app bootstrap after the stack completes (default true)")
-	flags.BoolVar(&deploy.noWaitReady, "no-wait-ready", false, "Aliyun: return after stack completes without waiting for the app endpoint")
-	flags.DurationVar(&deploy.timeout, "timeout", deploy.timeout, "maximum time to wait for stack completion and Aliyun bootstrap")
+	flags.BoolVar(&deploy.waitReady, "wait-ready", true, "wait for app bootstrap after the stack completes (default true)")
+	flags.BoolVar(&deploy.noWaitReady, "no-wait-ready", false, "return after stack completes without waiting for the app endpoint")
+	flags.DurationVar(&deploy.timeout, "timeout", deploy.timeout, "maximum time to wait for stack completion and app bootstrap")
 	flags.StringVar(&deploy.progress, "progress", "plain", "deployment progress output: plain or none")
 	return deploy
 }

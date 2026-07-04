@@ -373,11 +373,13 @@ cloud-forge deploy hello-nginx --cloud aws \
   --progress none
 ```
 
+After the stack reaches `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached. The first boot still needs to pull images and obtain a TLS certificate, so this bridges the gap between stack completion and a reachable endpoint. Pass `--no-wait-ready` to return right after the stack is created.
+
 ## Aliyun deploy (Hong Kong)
 
 Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData on first boot. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
 
-**Default behavior:** after ROS `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached. Pass `--no-wait-ready` to return right after the stack is created.
+**Default behavior:** after ROS `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached, the same as AWS. Pass `--no-wait-ready` to return right after the stack is created.
 
 Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
 

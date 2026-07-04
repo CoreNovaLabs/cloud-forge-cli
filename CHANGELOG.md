@@ -6,8 +6,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ### Added
 
-- Aliyun deploy waits for app bootstrap by default after stack `CREATE_COMPLETE` (`--wait-ready`, default true; `--no-wait-ready` to skip)
+- AWS and Aliyun deploy wait for app bootstrap by default after stack `CREATE_COMPLETE` (`--wait-ready`, default true; `--no-wait-ready` to skip)
 - HTTP polling of stack `ServiceURL` `/health` and `/` until ready or `--timeout`
+
+### Changed
+
+- AWS deploy now polls the service endpoint after `CREATE_COMPLETE`, matching the Aliyun behavior; `--wait-ready`/`--no-wait-ready`/`--timeout` apply to both clouds
 
 ## [0.3.0] - 2026-07-04
 
