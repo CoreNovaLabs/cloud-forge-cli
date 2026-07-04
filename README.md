@@ -4,24 +4,59 @@
 
 <h1 align="center">Cloud Forge CLI</h1>
 
-Cloud Forge CLI is the command-line client for the Cloud Forge catalog. It supports catalog search, app inspection, template download, AWS CloudFormation deploy, and stack deletion.
+<p align="center">
+  Turn open-source apps into one-command cloud deployments. The current AWS path uses CloudFormation, hardened AMIs, and guided credential setup.
+</p>
 
-**Supported in v1:** AWS deploy/delete for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun templates can be listed and downloaded, but deploy is AWS-only.
+<p align="center">
+  <a href="README.zh-CN.md">中文文档</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#aws-credentials">AWS Credentials</a>
+  ·
+  <a href="#cleanup">Cleanup</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml"><img alt="Test CLI" src="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml/badge.svg" /></a>
+  <a href="https://github.com/CoreNovaLabs/cloud-forge-cli/releases"><img alt="Release" src="https://img.shields.io/github/v/release/CoreNovaLabs/cloud-forge-cli?sort=semver" /></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" /></a>
+  <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/CoreNovaLabs/cloud-forge-cli" /></a>
+  <img alt="AWS" src="https://img.shields.io/badge/AWS-deploy%20%7C%20delete-ff9900" />
+</p>
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
+cloud-forge auth aws
+cloud-forge deploy hello-nginx --cloud aws --allowed-ip <YOUR_IP>/32
+```
+
+Cloud Forge is building a catalog of open-source apps that can be deployed with a single command. Cloud Forge CLI is the command-line entry point for that catalog: use it to find apps, inspect templates, deploy AWS CloudFormation stacks, and remove the stacks when you are done.
+
+| Capability | What it does |
+| --- | --- |
+| Catalog search | Browse the growing app catalog, including `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. |
+| AWS deploy | Create or update CloudFormation stacks and follow progress in the terminal. |
+| Built-in auth | Sign in through a browser or configure access keys without installing the AWS CLI. |
+| Cleanup | Delete CloudFormation stacks and release the AWS resources they created. |
+
+**Current status:** AWS deploy and delete are available for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun templates can be listed and downloaded, but deployment currently supports AWS only.
 
 ## What It Does
 
-Cloud Forge CLI helps you discover and deploy apps from the Cloud Forge catalog.
+Cloud Forge CLI turns catalog entries into a repeatable deployment workflow. The long-term goal is a broad open-source app catalog; the current CLI focuses on AWS deployment first.
 
 For AWS, it can:
 
-- search available apps
+- search the catalog
 - show app metadata
 - render the CloudFormation template for an app
-- create or update an AWS CloudFormation stack
-- delete an AWS CloudFormation stack
-- show CloudFormation resource progress while deploying or deleting
+- create or update a CloudFormation stack
+- delete a CloudFormation stack
+- show CloudFormation resource progress during deploy and delete
 - reuse a local SSH key for EC2 access
-- print stack outputs such as service URL, public IP, instance ID, AMI ID, and region when the template provides them
+- print outputs such as service URL, public IP, instance ID, AMI ID, and region when the template provides them
 
 AWS deploys default to `us-east-1`.
 
@@ -30,10 +65,16 @@ AWS deploys default to `us-east-1`.
 Recommended one-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
 ```
 
-This installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if needed.
+The installer puts `cloud-forge` in `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
+
+If the CDN is unavailable in your network, use the GitHub raw URL instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+```
 
 Manual install from GitHub Releases:
 
@@ -41,7 +82,7 @@ Manual install from GitHub Releases:
 https://github.com/CoreNovaLabs/cloud-forge-cli/releases
 ```
 
-Unpack the archive and put the `cloud-forge` binary somewhere on your `PATH`.
+Unpack the archive and move the `cloud-forge` binary to a directory on your `PATH`.
 
 Verify the install:
 
@@ -53,9 +94,9 @@ You can also build from source. See [Build From Source](#build-from-source).
 
 ## AWS Credentials
 
-Cloud Forge CLI uses the AWS SDK for Go v2 for AWS API calls and includes a built-in AWS browser sign-in flow.
+Cloud Forge CLI calls AWS through the AWS SDK for Go v2. It also includes a browser-based AWS sign-in flow, so the CLI can set up credentials without shelling out to the AWS CLI.
 
-You do not need to install the AWS CLI, but you do need AWS credentials.
+You do not need to install the AWS CLI, but you do need an AWS identity or access keys.
 
 Use the built-in AWS browser sign-in:
 
@@ -63,11 +104,11 @@ Use the built-in AWS browser sign-in:
 cloud-forge auth aws
 ```
 
-By default, `cloud-forge auth aws` opens an AWS sign-in page and configures a local temporary-credential profile after authorization. The browser sign-in path is implemented inside Cloud Forge with AWS Sign-In OAuth and PKCE. It does not require the AWS CLI.
+By default, `cloud-forge auth aws` opens an AWS sign-in page. After authorization, it writes a local profile with temporary credentials. This flow uses AWS Sign-In OAuth with PKCE inside Cloud Forge and does not require the AWS CLI.
 
-If the browser does not open, Cloud Forge prints a sign-in URL that you can copy into a browser. Use `--no-browser` to print a URL and paste back the authorization code manually.
+If the browser does not open, the CLI prints a sign-in URL that you can copy into a browser. Use `--no-browser` when you want to print the URL and paste the authorization code manually.
 
-If `AWS_PROFILE` is set, the auth wizard uses that profile by default. Use `--profile NAME` to check or write a specific profile.
+If `AWS_PROFILE` is set, the auth command uses that profile by default. Use `--profile NAME` to check or write a specific profile.
 
 Check current auth status:
 
@@ -75,7 +116,7 @@ Check current auth status:
 cloud-forge auth aws status
 ```
 
-The status output includes the AWS account, ARN, region, profile, and AWS SDK credential source.
+The status output shows the AWS account, ARN, region, profile, and the credential source selected by the AWS SDK.
 
 Supported credential sources include:
 
@@ -86,26 +127,26 @@ Supported credential sources include:
 - AWS SSO or assume-role profiles supported by the AWS SDK
 - EC2/ECS instance or task roles
 
-Example with an AWS profile:
+Use an AWS profile:
 
 ```bash
 export AWS_PROFILE=default
 ```
 
-Example with environment variables:
+Use environment variables:
 
 ```bash
 export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
 ```
 
-AWS deploys default to `us-east-1`; override it when needed:
+AWS deploys default to `us-east-1`. Override it when needed:
 
 ```bash
 cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 ```
 
-For production use, prefer an IAM user or role with limited permissions instead of using the AWS account root credentials.
+For production use, prefer a least-privilege IAM user or role. Avoid using AWS account root credentials.
 
 Browser sign-in is the default; this explicit form is equivalent:
 
@@ -113,7 +154,7 @@ Browser sign-in is the default; this explicit form is equivalent:
 cloud-forge auth aws --method browser
 ```
 
-Print a browser sign-in URL without opening the browser:
+Print the sign-in URL without opening a browser:
 
 ```bash
 cloud-forge auth aws --method browser --no-browser
@@ -127,13 +168,13 @@ cloud-forge auth aws --method access-key
 
 ## Quick Start
 
-Search the catalog:
+Find an app:
 
 ```bash
 cloud-forge search nginx --cloud aws
 ```
 
-Show an app:
+Show app details:
 
 ```bash
 cloud-forge show hello-nginx
@@ -145,7 +186,7 @@ Preview the AWS template:
 cloud-forge template hello-nginx --cloud aws
 ```
 
-Validate a deployment without creating resources:
+Validate the deployment without creating resources:
 
 ```bash
 cloud-forge deploy hello-nginx --cloud aws --dry-run
@@ -167,7 +208,7 @@ During deployment, the CLI prints CloudFormation progress:
 [12:01:15] AWS::EC2::Instance HelloInstance CREATE_IN_PROGRESS
 ```
 
-When the stack completes, the CLI prints the outputs returned by the template and a cleanup command:
+When the stack finishes, the CLI prints the template outputs and a cleanup command:
 
 ```text
 To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
@@ -195,7 +236,7 @@ cloud-forge delete cloud-forge-n8n --cloud aws --no-wait
 
 Deleting the stack removes the EC2 instance, Elastic IP, security group, and related resources created by the template.
 
-The reusable local private key is not deleted automatically:
+The reusable local private key stays on disk:
 
 ```text
 ~/.cloud-forge/keys/aws/cloud-forge-default.pem
@@ -203,13 +244,13 @@ The reusable local private key is not deleted automatically:
 
 ## SSH Key Behavior
 
-By default, AWS deploys use a local reusable SSH key:
+By default, AWS deploys use a reusable local SSH key:
 
 ```text
 ~/.cloud-forge/keys/aws/cloud-forge-default.pem
 ```
 
-The CLI creates this private key on first use with `0600` permissions and imports the public key into EC2 as `cloud-forge-default` when the target AWS region does not already have that key pair. The same local private key is reused across regions.
+On first use, the CLI creates this private key with `0600` permissions. If the target AWS region does not already have a `cloud-forge-default` key pair, the CLI imports the matching public key into EC2. The same local private key is reused across regions.
 
 Use an existing EC2 key pair instead:
 
@@ -250,7 +291,7 @@ cloud-forge deploy hello-nginx --cloud aws \
   --progress none
 ```
 
-Template parameters can be passed either with dedicated flags or repeated `--param` flags:
+Template parameters can be supplied with dedicated flags or repeated `--param` flags:
 
 ```bash
 cloud-forge deploy gitea --cloud aws \
@@ -259,17 +300,17 @@ cloud-forge deploy gitea --cloud aws \
   --param ImageId=ami-0123456789abcdef0
 ```
 
-Supported dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, `--latest-ami-id`, and `--caddy-tls-mode`.
+Dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, `--latest-ami-id`, and `--caddy-tls-mode`.
 
 ## Catalog Reference
 
-By default the CLI reads:
+By default, the CLI reads the catalog index from:
 
 ```text
 https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main/index/apps.json
 ```
 
-If the default mirror is unavailable, the CLI falls back to the GitHub raw catalog URL.
+If the default mirror is unavailable, it falls back to the GitHub raw catalog URL.
 
 For local development:
 
@@ -289,13 +330,13 @@ cloud-forge delete cloud-forge-hello-nginx --cloud aws
 cloud-forge help deploy
 ```
 
-Aliyun templates are available via `search` and `template`, but `deploy` and `delete` are AWS-only in v1.
+Aliyun templates are available via `search` and `template`, but `deploy` and `delete` currently support AWS only.
 
 ## AWS Deploy
 
-AWS deployment uses the AWS SDK for Go v2 and CloudFormation. It does not shell out to the AWS CLI.
+AWS deployment uses the AWS SDK for Go v2 and CloudFormation. It does not call the AWS CLI underneath.
 
-Credentials are loaded from the normal AWS SDK chain. AWS deploys default to `us-east-1`; override with `--region` when needed.
+Credentials are loaded from the standard AWS SDK credential chain. AWS deploys default to `us-east-1`; override with `--region` when needed.
 
 ```bash
 export AWS_PROFILE=default
@@ -332,15 +373,15 @@ cloud-forge deploy hello-nginx --cloud aws \
 
 ## Telemetry
 
-The CLI sends anonymous, non-blocking usage events to:
+By default, the CLI sends anonymous, non-blocking usage events to:
 
 ```text
 https://telemetry.corenovacloud.com/v1/events
 ```
 
-Telemetry does not include cloud credentials, account IDs, domains, local paths, or template parameter values.
+Telemetry never includes cloud credentials, account IDs, domains, local paths, or template parameter values.
 
-Disable it when needed:
+Disable telemetry when needed:
 
 ```bash
 export CLOUD_FORGE_TELEMETRY=0

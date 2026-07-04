@@ -50,11 +50,12 @@ jobs:
               -o "${workdir}/cloud-forge${ext}" ./cmd/cloud-forge
 
             cp README.md "${workdir}/README.md"
+            cp README.zh-CN.md "${workdir}/README.zh-CN.md"
             if [[ "$archive_ext" == "zip" ]]; then
-              (cd "$workdir" && zip -q "../${name}.zip" "cloud-forge${ext}" README.md)
+              (cd "$workdir" && zip -q "../${name}.zip" "cloud-forge${ext}" README.md README.zh-CN.md)
               mv "${workdir}/../${name}.zip" dist/
             else
-              tar -C "$workdir" -czf "dist/${name}.tar.gz" "cloud-forge${ext}" README.md
+              tar -C "$workdir" -czf "dist/${name}.tar.gz" "cloud-forge${ext}" README.md README.zh-CN.md
             fi
             rm -rf "$workdir"
           }
