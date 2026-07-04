@@ -54,9 +54,10 @@ cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
   --vpc-id vpc-xxx \
   --vswitch-id vsw-xxx \
   --key my-key \
-  --allowed-ip <YOUR_IP>/32
+  --allowed-ip <YOUR_IP>/32 \
+  --timeout 20m
 
-# First bootstrap may take 8-15 minutes; then open ServiceURL from deploy output
+# CLI waits for /health by default; use --no-wait-ready to skip bootstrap polling
 
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```

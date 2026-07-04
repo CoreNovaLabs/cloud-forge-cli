@@ -377,6 +377,8 @@ cloud-forge deploy hello-nginx --cloud aws \
 
 Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData on first boot. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
 
+**Default behavior:** after ROS `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached. Pass `--no-wait-ready` to return right after the stack is created.
+
 Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
 
 ```bash
@@ -387,7 +389,12 @@ cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
   --vpc-id vpc-xxx \
   --vswitch-id vsw-xxx \
   --key my-key \
-  --allowed-ip <YOUR_IP>/32
+  --allowed-ip <YOUR_IP>/32 \
+  --timeout 20m
+
+# Stack only — do not wait for bootstrap
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
+  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --no-wait-ready
 
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```

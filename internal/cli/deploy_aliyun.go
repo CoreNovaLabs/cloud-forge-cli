@@ -214,6 +214,19 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		Status: "success", DurationMS: durationMS(started),
 	})
 
+	waitReady := deploy.waitReady && !deploy.noWaitReady
+	if !deploy.dryRun && !deploy.noWait && waitReady {
+		deadline := started.Add(deploy.timeout)
+		showProgress := deploy.progress == "plain"
+		if err := waitAliyunServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
+			printAliyunDeployResult(stdout, result)
+			fmt.Fprintf(stderr, "\n%v\n", err)
+			return 1
+		}
+	} else if !deploy.dryRun && !deploy.noWait {
+		fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take 8-15 minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+	}
+
 	printAliyunDeployResult(stdout, result)
 	if !deploy.dryRun {
 		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aliyun --region %s\n", stackName, result.Region)

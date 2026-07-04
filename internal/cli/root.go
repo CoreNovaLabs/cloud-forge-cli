@@ -65,6 +65,8 @@ type deployFlags struct {
 	parameters   keyValueFlag
 	dryRun       bool
 	noWait       bool
+	waitReady    bool
+	noWaitReady  bool
 	timeout      time.Duration
 	progress     string
 }
@@ -850,6 +852,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 		parameters: keyValueFlag{},
 		region:     defaultAWSRegion,
 		timeout:    awsdeploy.DefaultTimeout,
+		waitReady:  true,
 	}
 	flags.StringVar(&deploy.region, "region", deploy.region, "AWS region")
 	flags.StringVar(&deploy.profile, "profile", "", "AWS shared config profile")
@@ -875,7 +878,9 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.Var(deploy.parameters, "parameter", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.BoolVar(&deploy.dryRun, "dry-run", false, "validate template and parameters without creating or updating a stack")
 	flags.BoolVar(&deploy.noWait, "no-wait", false, "return immediately after starting stack create or update")
-	flags.DurationVar(&deploy.timeout, "timeout", deploy.timeout, "maximum time to wait for stack completion")
+	flags.BoolVar(&deploy.waitReady, "wait-ready", true, "Aliyun: wait for app bootstrap after the stack completes (default true)")
+	flags.BoolVar(&deploy.noWaitReady, "no-wait-ready", false, "Aliyun: return after stack completes without waiting for the app endpoint")
+	flags.DurationVar(&deploy.timeout, "timeout", deploy.timeout, "maximum time to wait for stack completion and Aliyun bootstrap")
 	flags.StringVar(&deploy.progress, "progress", "plain", "deployment progress output: plain or none")
 	return deploy
 }

@@ -479,6 +479,122 @@ func TestDeployAliyunUsesCatalogTemplateAndParameters(t *testing.T) {
 	}
 }
 
+func TestDeployAliyunWaitsForReadyByDefault(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{
+			output: &aliyundeploy.DeployOutput{
+				Action:    "created",
+				Region:    "cn-hongkong",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-hello-nginx",
+				Status:    "CREATE_COMPLETE",
+				Outputs:   map[string]string{"ServiceURL": server.URL},
+			},
+		}, nil
+	}
+	t.Cleanup(func() { newAliyunDeployer = oldNewAliyunDeployer })
+
+	oldInterval := aliyunBootstrapPollInterval
+	aliyunBootstrapPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { aliyunBootstrapPollInterval = oldInterval })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--region",
+		"cn-hongkong",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--vpc-id",
+		"vpc-test",
+		"--vswitch-id",
+		"vsw-test",
+		"--key",
+		"my-key",
+		"--timeout",
+		"30s",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("expected ready message, got: %s", stdout.String())
+	}
+}
+
+func TestDeployAliyunNoWaitReadySkipsProbe(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{
+			output: &aliyundeploy.DeployOutput{
+				Action:    "created",
+				Region:    "cn-hongkong",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-hello-nginx",
+				Status:    "CREATE_COMPLETE",
+				Outputs:   map[string]string{"ServiceURL": "https://127.0.0.1:1"},
+			},
+		}, nil
+	}
+	t.Cleanup(func() { newAliyunDeployer = oldNewAliyunDeployer })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--region",
+		"cn-hongkong",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--vpc-id",
+		"vpc-test",
+		"--vswitch-id",
+		"vsw-test",
+		"--key",
+		"my-key",
+		"--no-wait-ready",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("did not expect bootstrap wait, got: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "app bootstrap may still take") {
+		t.Fatalf("expected bootstrap note, got: %s", stdout.String())
+	}
+}
+
 func TestDeleteAliyunStack(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
 
@@ -608,11 +724,15 @@ func (f fakeAWSDeployer) Destroy(ctx context.Context, input awsdeploy.DestroyInp
 type fakeAliyunDeployer struct {
 	input        *aliyundeploy.DeployInput
 	destroyInput *aliyundeploy.DestroyInput
+	output       *aliyundeploy.DeployOutput
 }
 
 func (f fakeAliyunDeployer) Deploy(ctx context.Context, input aliyundeploy.DeployInput) (*aliyundeploy.DeployOutput, error) {
 	if f.input != nil {
 		*f.input = input
+	}
+	if f.output != nil {
+		return f.output, nil
 	}
 	return &aliyundeploy.DeployOutput{
 		Action:    "validated",
