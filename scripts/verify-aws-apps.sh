@@ -28,7 +28,15 @@ poll_health() {
   return 1
 }
 
-for app in hello-nginx gitea n8n uptime-kuma; do
+APPS=($("$CATALOG_ROOT/scripts/list-verify-apps.sh"))
+if [[ ${#APPS[@]} -eq 0 ]]; then
+  echo "error: no apps selected for cloud verify (check CLOUD_FORGE_VERIFY_TIERS)" >&2
+  exit 1
+fi
+
+echo "AWS verify tiers=${CLOUD_FORGE_VERIFY_TIERS:-certified} sample=${CLOUD_FORGE_VERIFY_SAMPLE:-0} apps=${APPS[*]}"
+
+for app in "${APPS[@]}"; do
   echo "======== AWS DEPLOY $app ========"
   out="$(mktemp)"
   if ! ./cloud-forge deploy "$app" --cloud aws --region us-east-1 \

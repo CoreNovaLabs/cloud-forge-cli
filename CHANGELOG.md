@@ -4,6 +4,11 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `verify-aws-apps.sh` and `verify-aliyun-apps.sh` select apps via catalog `list-verify-apps.sh` (default: `certified` tier)
+- Supports `CLOUD_FORGE_VERIFY_TIERS` and `CLOUD_FORGE_VERIFY_SAMPLE` for community random sampling
+
 ## [0.3.0] - 2026-07-04
 
 ### Added
