@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cloud-forge/cli/internal/awsdeploy"
+	"github.com/cloud-forge/cli/internal/aliyundeploy"
 )
 
 func TestSearchUsesLocalCatalog(t *testing.T) {
@@ -418,8 +419,97 @@ func TestDeployAWSRequiresCatalogParameters(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "missing required AWS parameter(s): RequiredToken") {
+	if !strings.Contains(stderr.String(), "missing required aws parameter(s): RequiredToken") {
 		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestDeployAliyunUsesCatalogTemplateAndParameters(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	var gotInput aliyundeploy.DeployInput
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{input: &gotInput}, nil
+	}
+	t.Cleanup(func() {
+		newAliyunDeployer = oldNewAliyunDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--region",
+		"cn-hongkong",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--vpc-id",
+		"vpc-test",
+		"--vswitch-id",
+		"vsw-test",
+		"--key",
+		"my-key",
+		"--dry-run",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if gotInput.StackName != "cloud-forge-hello-nginx" {
+		t.Fatalf("unexpected stack name %q", gotInput.StackName)
+	}
+	if gotInput.Parameters["VpcId"] != "vpc-test" {
+		t.Fatalf("unexpected VpcId %q", gotInput.Parameters["VpcId"])
+	}
+	if gotInput.Parameters["VSwitchId"] != "vsw-test" {
+		t.Fatalf("unexpected VSwitchId %q", gotInput.Parameters["VSwitchId"])
+	}
+	if gotInput.Parameters["KeyPairName"] != "my-key" {
+		t.Fatalf("unexpected KeyPairName %q", gotInput.Parameters["KeyPairName"])
+	}
+	if !gotInput.DryRun {
+		t.Fatal("expected dry-run deploy")
+	}
+}
+
+func TestDeleteAliyunStack(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+
+	var gotInput aliyundeploy.DestroyInput
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{destroyInput: &gotInput}, nil
+	}
+	t.Cleanup(func() {
+		newAliyunDeployer = oldNewAliyunDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"delete",
+		"cloud-forge-hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--region",
+		"cn-hongkong",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if gotInput.StackName != "cloud-forge-hello-nginx" {
+		t.Fatalf("unexpected stack name %q", gotInput.StackName)
+	}
+	if !strings.Contains(stdout.String(), "deleted") {
+		t.Fatalf("expected delete output, got: %s", stdout.String())
 	}
 }
 
@@ -513,6 +603,93 @@ func (f fakeAWSDeployer) Destroy(ctx context.Context, input awsdeploy.DestroyInp
 		StackName: input.StackName,
 		Status:    "DELETE_COMPLETE",
 	}, nil
+}
+
+type fakeAliyunDeployer struct {
+	input        *aliyundeploy.DeployInput
+	destroyInput *aliyundeploy.DestroyInput
+}
+
+func (f fakeAliyunDeployer) Deploy(ctx context.Context, input aliyundeploy.DeployInput) (*aliyundeploy.DeployOutput, error) {
+	if f.input != nil {
+		*f.input = input
+	}
+	return &aliyundeploy.DeployOutput{
+		Action:    "validated",
+		Region:    "cn-hongkong",
+		AccountID: "123456789012",
+		StackName: input.StackName,
+		Outputs:   map[string]string{"ServiceURL": "https://example.test"},
+	}, nil
+}
+
+func (f fakeAliyunDeployer) Destroy(ctx context.Context, input aliyundeploy.DestroyInput) (*aliyundeploy.DestroyOutput, error) {
+	if f.destroyInput != nil {
+		*f.destroyInput = input
+	}
+	return &aliyundeploy.DestroyOutput{
+		Action:    "deleted",
+		Region:    "cn-hongkong",
+		AccountID: "123456789012",
+		StackName: input.StackName,
+		Status:    "DELETE_COMPLETE",
+	}, nil
+}
+
+func writeAliyunTestCatalog(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "apps", "hello-nginx", "templates", "aliyun.json"), `{"Resources": {}}`)
+	indexPath := filepath.Join(root, "index", "apps.json")
+	writeFile(t, indexPath, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "base_url": "https://example.invalid/catalog",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": "hello-nginx",
+    "name": "Hello NGINX",
+    "desc": "demo",
+    "category": "other",
+    "tags": ["demo"],
+    "clouds": ["aliyun"],
+    "version": "1.0.0",
+    "price": "free",
+    "images": {"aliyun": "aliyun_3_x64_20G_alibase_20260122.vhd"},
+    "templates": {
+      "aliyun": {
+        "path": "apps/hello-nginx/templates/aliyun.json",
+        "url": "https://example.invalid/remote.json"
+      }
+    },
+    "params": {
+      "InstanceType": {
+        "type": "string",
+        "aliyun": {
+          "default": "ecs.c6.large",
+          "options": ["ecs.c6.large"]
+        }
+      },
+      "ImageId": {
+        "type": "string",
+        "aliyun": {"default": "aliyun_3_x64_20G_alibase_20260122.vhd"}
+      },
+      "CaddyTlsMode": {
+        "type": "string",
+        "aliyun": {
+          "default": "ip-letsencrypt",
+          "options": ["ip-letsencrypt", "http"]
+        }
+      },
+      "KeyPairName": {"type": "string", "aliyun": {"required": true}},
+      "VpcId": {"type": "string", "aliyun": {"required": true}},
+      "VSwitchId": {"type": "string", "aliyun": {"required": true}},
+      "AllowedIP": {"type": "string", "default": "0.0.0.0/0"}
+    }
+  }]
+}`)
+	return indexPath
 }
 
 func writeTestCatalog(t *testing.T) string {

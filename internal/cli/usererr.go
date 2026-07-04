@@ -35,6 +35,16 @@ func formatUserError(err error) string {
 		return "AWS browser sign-in failed. Try: cloud-forge auth aws --no-browser"
 	case strings.Contains(msg, "authorization"):
 		return "AWS authorization failed. Check your credentials and try: cloud-forge auth aws status"
+	case strings.Contains(msg, "aliyun credentials are not configured"):
+		return "Aliyun credentials are not configured. Run: cloud-forge auth aliyun"
+	case strings.Contains(msg, "check aliyun identity"):
+		return "Could not verify Aliyun credentials. Run: cloud-forge auth aliyun status"
+	case strings.Contains(msg, "aliyun v1 only supports region"):
+		return "Aliyun v1 only supports cn-hongkong. Pass --region cn-hongkong."
+	case strings.Contains(msg, "validate ros template"):
+		return formatAliyunDeployError(err)
+	case strings.Contains(msg, "create ros stack") || strings.Contains(msg, "update ros stack"):
+		return formatAliyunDeployError(err)
 	default:
 		return err.Error()
 	}
@@ -73,6 +83,18 @@ func inferIAMAction(message string) string {
 
 func formatStackMissing(err error) string {
 	return "CloudFormation stack not found. Check the stack name and region, or deploy the app first."
+}
+
+func formatAliyunDeployError(err error) string {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "ramrole") || strings.Contains(msg, "not authorized to create"):
+		return "ROS needs a RAM service role to create ECS resources. Create the ROS service role in the Aliyun console, then retry."
+	case strings.Contains(msg, "accessdenied") || strings.Contains(msg, "forbidden"):
+		return "Aliyun denied the request. Check RAM permissions for ROS, ECS, and VPC."
+	default:
+		return err.Error()
+	}
 }
 
 func printUserError(w io.Writer, err error) {

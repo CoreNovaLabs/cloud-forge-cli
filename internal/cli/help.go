@@ -17,8 +17,12 @@ func printCommandHelp(w io.Writer, command string) {
 		printDeployHelp(w)
 	case "delete", "destroy":
 		printDeleteHelp(w)
-	case "auth", "auth aws":
+	case "auth":
 		printAuthHelp(w)
+	case "auth aws":
+		printAuthAWSHelp(w)
+	case "auth aliyun":
+		printAuthAliyunHelp(w)
 	default:
 		fmt.Fprintf(w, "Unknown help topic %q\n\n", command)
 		printUsage(w)
@@ -32,13 +36,13 @@ Usage:
   cloud-forge search [query] [flags]
   cloud-forge show <app> [flags]
   cloud-forge template <app> --cloud aws|aliyun [flags]
-  cloud-forge deploy <app> --cloud aws [flags]
-  cloud-forge delete <stack> --cloud aws [flags]
-  cloud-forge auth aws [status] [flags]
+  cloud-forge deploy <app> --cloud aws|aliyun [flags]
+  cloud-forge delete <stack> --cloud aws|aliyun [flags]
+  cloud-forge auth aws|aliyun [status] [flags]
   cloud-forge version
   cloud-forge help [command]
 
-Deploy and delete currently support AWS only. Search and template also support Aliyun.
+Aliyun v1 supports cn-hongkong only. First Aliyun bootstrap may take 8-15 minutes.
 
 Exit codes:
   0  success
@@ -46,11 +50,13 @@ Exit codes:
   2  usage or validation error
 
 Environment:
-  CLOUD_FORGE_STORE_URL           Catalog index URL or local file path
-  CLOUD_FORGE_TELEMETRY           Set to 0, false, off, or disabled to disable telemetry
-  CLOUD_FORGE_TELEMETRY_ENDPOINT  Override telemetry endpoint URL
-  AWS_PROFILE                     Default AWS profile for auth and deploy
-  AWS_REGION / AWS_DEFAULT_REGION Default AWS region
+  CLOUD_FORGE_STORE_URL              Catalog index URL or local file path
+  CLOUD_FORGE_TELEMETRY              Set to 0, false, off, or disabled to disable telemetry
+  CLOUD_FORGE_TELEMETRY_ENDPOINT     Override telemetry endpoint URL
+  AWS_PROFILE                        Default AWS profile for auth and deploy
+  AWS_REGION / AWS_DEFAULT_REGION    Default AWS region
+  ALIBABA_CLOUD_ACCESS_KEY_ID        Aliyun access key (alternative to auth aliyun)
+  ALIBABA_CLOUD_ACCESS_KEY_SECRET    Aliyun secret key
 
 Documentation:
   https://github.com/CoreNovaLabs/cloud-forge-cli
@@ -108,69 +114,79 @@ Flags:
 
 func printDeployHelp(w io.Writer) {
 	fmt.Fprintf(w, `Usage:
-  cloud-forge deploy <app> --cloud aws [flags]
+  cloud-forge deploy <app> --cloud aws|aliyun [flags]
 
-Create or update an AWS CloudFormation stack for a catalog app.
+Create or update a CloudFormation (AWS) or ROS (Aliyun) stack for a catalog app.
 
 Flags:
-  --cloud <aws>              Cloud provider (deploy supports aws only)
-  --region <name>            AWS region (default: us-east-1)
-  --profile <name>           AWS shared config profile
-  --stack-name <name>        CloudFormation stack name (default: cloud-forge-<app>)
-  --instance-type <type>     CloudFormation InstanceType parameter
-  --allowed-ip <cidr>        Restrict SSH to this CIDR (default from catalog, often 0.0.0.0/0)
-  --dry-run                  Validate template and parameters without creating resources
-  --no-wait                  Return after starting the stack operation
-  --timeout <duration>       Maximum wait time (default: 30m)
-  --progress <plain|none>    Show CloudFormation progress events (default: plain)
-  --ssh-key <auto|none>      Manage a local SSH key automatically (default: auto)
-  --ssh-key-path <path>      Private key path for --ssh-key auto
-  --key, --key-name <name>   Use an existing AWS EC2 key pair
-  --domain <name>            CloudFormation DomainName parameter
-  --hosted-zone-id <id>      CloudFormation HostedZoneId parameter
-  --disk-size <gb>           CloudFormation DiskSize parameter
-  --vpc, --vpc-id <id>       CloudFormation VpcId parameter
-  --subnet, --subnet-id <id> CloudFormation SubnetId parameter
-  --image-id <ami>           CloudFormation ImageId parameter override
-  --latest-ami-id <ami>      CloudFormation LatestAmiId parameter override
-  --param, --parameter <k=v> CloudFormation parameter override (repeatable)
-  --store-url <url>          Catalog index URL or local file path
-  --cache-dir <path>         Catalog cache directory
-  --cache-ttl <duration>     Catalog cache TTL
+  --cloud <aws|aliyun>         Cloud provider (default: aws)
+  --region <name>              AWS region (default: us-east-1) or Aliyun cn-hongkong
+  --profile <name>             AWS shared config profile
+  --stack-name <name>          Stack name (default: cloud-forge-<app>)
+  --instance-type <type>       InstanceType parameter
+  --allowed-ip <cidr>          Restrict SSH to this CIDR
+  --dry-run                    Validate template and parameters without creating resources
+  --no-wait                    Return after starting the stack operation
+  --timeout <duration>         Maximum wait time (default: 30m)
+  --progress <plain|none>      Show stack progress events (default: plain)
+  --ssh-key <auto|none>        Manage a local SSH key automatically (AWS only, default: auto)
+  --ssh-key-path <path>        Private key path for --ssh-key auto (AWS only)
+  --key, --key-name <name>     AWS EC2 key pair or Aliyun KeyPairName
+  --domain <name>              DomainName parameter
+  --hosted-zone-id <id>        HostedZoneId parameter (AWS)
+  --disk-size <gb>             DiskSize parameter
+  --vpc, --vpc-id <id>         VpcId parameter
+  --subnet, --subnet-id <id>   SubnetId parameter (AWS)
+  --vswitch-id <id>            VSwitchId parameter (Aliyun, required)
+  --image-id <id>              ImageId / LatestAmiId override
+  --latest-ami-id <ami>        LatestAmiId parameter override (AWS)
+  --caddy-tls-mode <mode>      CaddyTlsMode parameter
+  --param, --parameter <k=v>   Parameter override (repeatable)
+  --store-url <url>            Catalog index URL or local file path
+  --cache-dir <path>           Catalog cache directory
+  --cache-ttl <duration>       Catalog cache TTL
 
 Examples:
   cloud-forge deploy hello-nginx --cloud aws --dry-run
-  cloud-forge deploy gitea --cloud aws --allowed-ip 203.0.113.10/32
+  cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key
 
 `)
 }
 
 func printDeleteHelp(w io.Writer) {
 	fmt.Fprintf(w, `Usage:
-  cloud-forge delete <stack-name> --cloud aws [flags]
+  cloud-forge delete <stack-name> --cloud aws|aliyun [flags]
 
-Delete an AWS CloudFormation stack created by Cloud Forge.
+Delete a stack created by Cloud Forge.
 
 Flags:
-  --cloud <aws>              Cloud provider (delete supports aws only)
-  --region <name>            AWS region (default: us-east-1)
+  --cloud <aws|aliyun>       Cloud provider (default: aws)
+  --region <name>            AWS region (default: us-east-1) or Aliyun cn-hongkong
   --profile <name>           AWS shared config profile
-  --wait                     Wait until stack deletion completes (default: true)
   --no-wait                  Return immediately after starting deletion
   --timeout <duration>       Maximum wait time (default: 30m)
-  --progress <plain|none>    Show CloudFormation progress events (default: plain)
-  --store-url <url>          Catalog index URL or local file path (for telemetry only)
-  --cache-dir <path>         Cache directory
-  --telemetry-endpoint <url> Telemetry endpoint URL
+  --progress <plain|none>    Show stack progress events (default: plain)
 
 Examples:
   cloud-forge delete cloud-forge-hello-nginx --cloud aws
-  cloud-forge delete cloud-forge-gitea --cloud aws --region us-west-2 --no-wait
+  cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 
 `)
 }
 
 func printAuthHelp(w io.Writer) {
+	fmt.Fprintf(w, `Usage:
+  cloud-forge auth aws [status] [flags]
+  cloud-forge auth aliyun [status] [flags]
+
+Configure or inspect cloud credentials.
+
+Run "cloud-forge help auth aws" or "cloud-forge help auth aliyun" for details.
+
+`)
+}
+
+func printAuthAWSHelp(w io.Writer) {
 	fmt.Fprintf(w, `Usage:
   cloud-forge auth aws [status] [flags]
 
@@ -189,6 +205,28 @@ Examples:
   cloud-forge auth aws
   cloud-forge auth aws status
   cloud-forge auth aws --method access-key
+
+`)
+}
+
+func printAuthAliyunHelp(w io.Writer) {
+	fmt.Fprintf(w, `Usage:
+  cloud-forge auth aliyun [status] [flags]
+
+Configure or inspect Aliyun AccessKey credentials for ROS deploy.
+
+Subcommands:
+  status                   Show current Aliyun auth status
+
+Flags:
+  --profile <name>         Credentials profile (default: default)
+  --region <name>          Default region (default: cn-hongkong)
+
+Credentials are stored in ~/.cloud-forge/aliyun/credentials
+
+Examples:
+  cloud-forge auth aliyun
+  cloud-forge auth aliyun status
 
 `)
 }

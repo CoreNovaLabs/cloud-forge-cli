@@ -2,6 +2,25 @@
 
 All notable changes to Cloud Forge CLI are documented in this file.
 
+## [0.3.0] - 2026-07-04
+
+### Added
+
+- `cloud-forge auth aliyun` and `cloud-forge auth aliyun status` for AccessKey credentials
+- Aliyun ROS deploy and delete via `internal/aliyundeploy` (Hong Kong `cn-hongkong` only)
+- `--vswitch-id` deploy flag for Aliyun VSwitchId
+- Aliyun-specific deploy warnings, progress output, and error mapping
+
+### Changed
+
+- `deploy` and `delete` route to AWS CloudFormation or Aliyun ROS based on `--cloud`
+- Version bumped to `0.3.0`
+
+### Notes
+
+- Aliyun v1 bootstraps Docker/Caddy on public OS images; first deploy may take 8–15 minutes
+- Requires catalog `0.3.0` templates and bootstrap scripts
+
 ## [0.2.0] - 2026-07-03
 
 ### Added
@@ -18,9 +37,7 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 - First public release supports four AWS catalog apps: `hello-nginx`, `gitea`, `n8n`, `uptime-kuma`
 - Deploy success output now includes a `cloud-forge delete` cleanup hint
-- Aliyun templates remain browsable; deploy and delete are AWS-only in v1
 
 ### Notes
 
 - Deploy and delete require AWS credentials (`cloud-forge auth aws`)
-- Aliyun ROS templates are catalog-only until a future release

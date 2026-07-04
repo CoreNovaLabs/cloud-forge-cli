@@ -14,14 +14,16 @@ import (
 
 	"github.com/cloud-forge/cli/internal/awsauth"
 	"github.com/cloud-forge/cli/internal/awsdeploy"
+	"github.com/cloud-forge/cli/internal/aliyunauth"
 	"github.com/cloud-forge/cli/internal/telemetry"
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.2.0"
+var Version = "0.3.0"
 
 const (
-	defaultAWSRegion        = "us-east-1"
+	defaultAWSRegion    = "us-east-1"
+	defaultAliyunRegion = "cn-hongkong"
 	defaultCatalogBaseURL   = "https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main"
 	fallbackCatalogBaseURL  = "https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-catalog/main"
 	defaultStoreURL         = defaultCatalogBaseURL + "/index/apps.json"
@@ -55,6 +57,7 @@ type deployFlags struct {
 	diskSize     string
 	vpcID        string
 	subnetID     string
+	vswitchID    string
 	allowedIP    string
 	imageID      string
 	latestAMIID  string
@@ -177,7 +180,11 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		return runDelete(ctx, args[1:], stdout, stderr)
 	case "auth":
 		if wantsHelp(args[1:]) {
-			printCommandHelp(stdout, "auth aws")
+			topic := helpTopic(args[1:])
+			if topic == "" {
+				topic = "auth"
+			}
+			printCommandHelp(stdout, topic)
 			return 0
 		}
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
@@ -186,7 +193,7 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		return 0
 	case "help", "-h", "--help":
 		if len(args) > 1 {
-			printCommandHelp(stdout, args[1])
+			printCommandHelp(stdout, strings.Join(args[1:], " "))
 			return 0
 		}
 		printUsage(stdout)
@@ -200,17 +207,24 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 
 func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cloud-forge auth aws [status] [--method auto|browser|access-key]")
+		fmt.Fprintln(stderr, "usage: cloud-forge auth <aws|aliyun> [status]")
 		return 2
 	}
-	if args[0] != "aws" {
-		fmt.Fprintf(stderr, "auth currently supports only aws, got %q\n", args[0])
+	switch args[0] {
+	case "aws":
+		return runAWSAuth(ctx, args[1:], stdin, stdout, stderr)
+	case "aliyun":
+		return runAliyunAuth(ctx, args[1:], stdin, stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "auth supports aws or aliyun, got %q\n", args[0])
 		return 2
 	}
+}
 
+func runAWSAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := newFlagSet("auth aws", stderr)
 	auth := addAuthFlags(flags)
-	positionals, err := parseInterspersed(flags, args[1:])
+	positionals, err := parseInterspersed(flags, args)
 	if err != nil {
 		return 2
 	}
@@ -251,6 +265,48 @@ func runAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	return 0
 }
 
+func runAliyunAuth(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	flags := newFlagSet("auth aliyun", stderr)
+	auth := addAliyunAuthFlags(flags)
+	positionals, err := parseInterspersed(flags, args)
+	if err != nil {
+		return 2
+	}
+	if len(positionals) > 1 {
+		fmt.Fprintln(stderr, "usage: cloud-forge auth aliyun [status]")
+		return 2
+	}
+	statusOnly := false
+	if len(positionals) == 1 {
+		if positionals[0] != "status" {
+			fmt.Fprintf(stderr, "unknown auth aliyun command %q\n", positionals[0])
+			return 2
+		}
+		statusOnly = true
+	}
+
+	var stdinFile *os.File
+	if f, ok := stdin.(*os.File); ok {
+		stdinFile = f
+	}
+	runner := aliyunauth.Runner{
+		In:    stdin,
+		Out:   stdout,
+		Err:   stderr,
+		Stdin: stdinFile,
+	}
+	err = runner.Run(ctx, aliyunauth.Options{
+		Profile:    auth.profile,
+		Region:     auth.region,
+		StatusOnly: statusOnly,
+	})
+	if err != nil {
+		printUserError(stderr, err)
+		return 1
+	}
+	return 0
+}
+
 func runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	started := time.Now()
 	flags := newFlagSet("delete", stderr)
@@ -267,8 +323,11 @@ func runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	if common.cloud == "" {
 		common.cloud = "aws"
 	}
+	if common.cloud == "aliyun" {
+		return runAliyunDelete(ctx, args, stdout, stderr)
+	}
 	if common.cloud != "aws" {
-		fmt.Fprintf(stderr, "delete supports AWS only in this release. Use --cloud aws.\n")
+		fmt.Fprintf(stderr, "delete supports aws and aliyun only.\n")
 		return 2
 	}
 	stackName := positionals[0]
@@ -350,8 +409,11 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	if common.cloud == "" {
 		common.cloud = "aws"
 	}
+	if common.cloud == "aliyun" {
+		return runAliyunDeploy(ctx, args, stdout, stderr)
+	}
 	if common.cloud != "aws" {
-		fmt.Fprintf(stderr, "Deploy supports AWS only in this release. Use --cloud aws.\n")
+		fmt.Fprintf(stderr, "deploy supports aws and aliyun only.\n")
 		return 2
 	}
 	keyNameFlagSet := flagWasSet(flags, "key") || flagWasSet(flags, "key-name")
@@ -699,15 +761,7 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 }
 
 func formatCloudSupport(clouds []string) string {
-	parts := make([]string, 0, len(clouds))
-	for _, cloud := range clouds {
-		label := cloud
-		if cloud == "aliyun" {
-			label += " (deploy not supported yet)"
-		}
-		parts = append(parts, label)
-	}
-	return strings.Join(parts, ", ")
+	return strings.Join(clouds, ", ")
 }
 
 func runTemplate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -810,8 +864,9 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.diskSize, "disk-size", "", "CloudFormation DiskSize parameter")
 	flags.StringVar(&deploy.vpcID, "vpc", "", "CloudFormation VpcId parameter")
 	flags.StringVar(&deploy.vpcID, "vpc-id", "", "CloudFormation VpcId parameter")
-	flags.StringVar(&deploy.subnetID, "subnet", "", "CloudFormation SubnetId parameter")
+	flags.StringVar(&deploy.subnetID, "subnet", "", "CloudFormation SubnetId / ROS VSwitchId parameter")
 	flags.StringVar(&deploy.subnetID, "subnet-id", "", "CloudFormation SubnetId parameter")
+	flags.StringVar(&deploy.vswitchID, "vswitch-id", "", "ROS VSwitchId parameter (aliyun)")
 	flags.StringVar(&deploy.allowedIP, "allowed-ip", "", "CloudFormation AllowedIP parameter")
 	flags.StringVar(&deploy.imageID, "image-id", "", "CloudFormation ImageId parameter")
 	flags.StringVar(&deploy.latestAMIID, "latest-ami-id", "", "CloudFormation LatestAmiId parameter")
@@ -837,6 +892,16 @@ func addDeleteFlags(flags *flag.FlagSet) *deleteFlags {
 	flags.DurationVar(&del.timeout, "timeout", del.timeout, "maximum time to wait for stack deletion")
 	flags.StringVar(&del.progress, "progress", del.progress, "deletion progress output: plain or none")
 	return del
+}
+
+func addAliyunAuthFlags(flags *flag.FlagSet) *authFlags {
+	auth := &authFlags{
+		profile: aliyunauth.DefaultProfile,
+		region:  defaultAliyunRegion,
+	}
+	flags.StringVar(&auth.profile, "profile", auth.profile, "Aliyun credentials profile")
+	flags.StringVar(&auth.region, "region", auth.region, "default Aliyun region (v1: cn-hongkong)")
+	return auth
 }
 
 func addAuthFlags(flags *flag.FlagSet) *authFlags {
@@ -1168,7 +1233,7 @@ func validateRequiredParams(definitions map[string]store.ParamDefinition, values
 		return nil
 	}
 	sort.Strings(missing)
-	return fmt.Errorf("missing required AWS parameter(s): %s", strings.Join(missing, ", "))
+	return fmt.Errorf("missing required %s parameter(s): %s", cloud, strings.Join(missing, ", "))
 }
 
 func validateParamOptions(definitions map[string]store.ParamDefinition, values map[string]string, cloud string) error {

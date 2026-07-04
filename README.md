@@ -41,7 +41,7 @@ Cloud Forge is building a catalog of open-source apps that can be deployed with 
 | Built-in auth | Sign in through a browser or configure access keys without installing the AWS CLI. |
 | Cleanup | Delete CloudFormation stacks and release the AWS resources they created. |
 
-**Current status:** AWS deploy and delete are available for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun templates can be listed and downloaded, but deployment currently supports AWS only.
+**Current status:** AWS and Aliyun (`cn-hongkong`) deploy and delete are available for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun v1 uses public OS images with UserData bootstrap; first boot may take 8–15 minutes.
 
 ## What It Does
 
@@ -326,11 +326,13 @@ cloud-forge auth aws status
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
-cloud-forge delete cloud-forge-hello-nginx --cloud aws
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
+  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --dry-run
+cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 cloud-forge help deploy
 ```
 
-Aliyun templates are available via `search` and `template`, but `deploy` and `delete` currently support AWS only.
+Aliyun v1 supports **`cn-hongkong` only**. Configure AccessKey credentials with `cloud-forge auth aliyun` before deploy.
 
 ## AWS Deploy
 
@@ -370,6 +372,27 @@ Disable progress output:
 cloud-forge deploy hello-nginx --cloud aws \
   --progress none
 ```
+
+## Aliyun deploy (Hong Kong)
+
+Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData on first boot. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
+
+Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
+
+```bash
+cloud-forge auth aliyun
+cloud-forge auth aliyun status
+
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
+  --vpc-id vpc-xxx \
+  --vswitch-id vsw-xxx \
+  --key my-key \
+  --allowed-ip <YOUR_IP>/32
+
+cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
+```
+
+Container images use Docker Hub short names (reachable from Hong Kong ECS without ACR).
 
 ## Telemetry
 
