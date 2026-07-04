@@ -4,15 +4,6 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- AWS and Aliyun deploy wait for app bootstrap by default after stack `CREATE_COMPLETE` (`--wait-ready`, default true; `--no-wait-ready` to skip)
-- HTTP polling of stack `ServiceURL` `/health` and `/` until ready or `--timeout`
-
-### Changed
-
-- AWS deploy now polls the service endpoint after `CREATE_COMPLETE`, matching the Aliyun behavior; `--wait-ready`/`--no-wait-ready`/`--timeout` apply to both clouds
-
 ## [0.3.0] - 2026-07-04
 
 ### Added
@@ -21,10 +12,14 @@ All notable changes to Cloud Forge CLI are documented in this file.
 - Aliyun ROS deploy and delete via `internal/aliyundeploy` (Hong Kong `cn-hongkong` only)
 - `--vswitch-id` deploy flag for Aliyun VSwitchId
 - Aliyun-specific deploy warnings, progress output, and error mapping
+- AWS and Aliyun deploy wait for app bootstrap by default after stack `CREATE_COMPLETE` (`--wait-ready`, default true; `--no-wait-ready` to skip)
+- HTTP polling of stack `ServiceURL` `/health` and `/` until ready or `--timeout`
+- `scripts/verify-aws-apps.sh` and `scripts/verify-aliyun-apps.sh` for live end-to-end smoke tests
 
 ### Changed
 
 - `deploy` and `delete` route to AWS CloudFormation or Aliyun ROS based on `--cloud`
+- AWS deploy now polls the service endpoint after `CREATE_COMPLETE`, matching the Aliyun behavior; `--wait-ready`/`--no-wait-ready`/`--timeout` apply to both clouds
 - Version bumped to `0.3.0`
 
 ### Notes
