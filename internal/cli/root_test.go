@@ -606,6 +606,62 @@ func TestDeployAWSNoWaitReadySkipsProbe(t *testing.T) {
 	}
 }
 
+func TestDeployAliyunAutoDefaults(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	oldResolve := resolveAliyunDeployDefaults
+	resolveAliyunDeployDefaults = func(ctx context.Context, cfg aliyundeploy.Config, req aliyundeploy.DeployDefaultsRequest) (aliyundeploy.DeployDefaultsResult, error) {
+		if !req.AutoVpc || !req.AutoVSwitch || !req.AutoKey {
+			t.Fatalf("expected auto discovery flags, got %+v", req)
+		}
+		return aliyundeploy.DeployDefaultsResult{
+			VpcID:       "vpc-auto",
+			VSwitchID:   "vsw-auto",
+			KeyPairName: "cloud-forge-default",
+			Messages:    []string{"Using VPC vpc-auto and VSwitch vsw-auto"},
+		}, nil
+	}
+	t.Cleanup(func() { resolveAliyunDeployDefaults = oldResolve })
+
+	var gotInput aliyundeploy.DeployInput
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{input: &gotInput}, nil
+	}
+	t.Cleanup(func() { newAliyunDeployer = oldNewAliyunDeployer })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--dry-run",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if gotInput.Parameters["VpcId"] != "vpc-auto" {
+		t.Fatalf("VpcId = %q", gotInput.Parameters["VpcId"])
+	}
+	if gotInput.Parameters["VSwitchId"] != "vsw-auto" {
+		t.Fatalf("VSwitchId = %q", gotInput.Parameters["VSwitchId"])
+	}
+	if gotInput.Parameters["KeyPairName"] != "cloud-forge-default" {
+		t.Fatalf("KeyPairName = %q", gotInput.Parameters["KeyPairName"])
+	}
+	if !strings.Contains(stdout.String(), "Using VPC vpc-auto") {
+		t.Fatalf("expected discovery message, got: %s", stdout.String())
+	}
+}
+
 func TestDeployAliyunUsesCatalogTemplateAndParameters(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
 	indexPath := writeAliyunTestCatalog(t)

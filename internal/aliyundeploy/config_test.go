@@ -39,14 +39,29 @@ func TestLoadConfigFromFile(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsUnsupportedRegion(t *testing.T) {
-	_, err := LoadConfig(Config{
+func TestLoadConfigAcceptsOtherRegion(t *testing.T) {
+	cfg, err := LoadConfig(Config{
 		Region:          "cn-hangzhou",
 		AccessKeyID:     "id",
 		AccessKeySecret: "secret",
 	})
-	if err == nil {
-		t.Fatal("expected region error")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Region != "cn-hangzhou" {
+		t.Fatalf("Region = %q", cfg.Region)
+	}
+}
+
+func TestMainlandChinaRegion(t *testing.T) {
+	if !MainlandChinaRegion("cn-hangzhou") {
+		t.Fatal("expected cn-hangzhou to be mainland")
+	}
+	if MainlandChinaRegion("cn-hongkong") {
+		t.Fatal("cn-hongkong should not be mainland")
+	}
+	if MainlandChinaRegion("ap-southeast-1") {
+		t.Fatal("ap-southeast-1 should not be mainland")
 	}
 }
 

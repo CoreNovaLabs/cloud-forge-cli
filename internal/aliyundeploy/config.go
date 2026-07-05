@@ -9,10 +9,22 @@ import (
 )
 
 const (
-	SupportedRegion = "cn-hongkong"
-	DefaultRegion   = SupportedRegion
+	// DefaultRegion is used when --region is omitted for Aliyun deploy/auth.
+	DefaultRegion = "cn-hongkong"
+	// SupportedRegion is an alias for DefaultRegion (legacy name in tests).
+	SupportedRegion = DefaultRegion
 	DefaultProfile  = "default"
 )
+
+// MainlandChinaRegion reports whether region is a mainland China Aliyun region.
+// Hong Kong (cn-hongkong) returns false.
+func MainlandChinaRegion(region string) bool {
+	region = strings.TrimSpace(region)
+	if region == "" || region == DefaultRegion {
+		return false
+	}
+	return strings.HasPrefix(region, "cn-")
+}
 
 type Config struct {
 	Region          string
@@ -58,9 +70,6 @@ func LoadConfig(cfg Config) (Config, error) {
 
 	if loaded.Region == "" {
 		loaded.Region = DefaultRegion
-	}
-	if loaded.Region != SupportedRegion {
-		return Config{}, fmt.Errorf("aliyun region %q is not supported in v1; use %s", loaded.Region, SupportedRegion)
 	}
 	if loaded.AccessKeyID == "" || loaded.AccessKeySecret == "" {
 		return Config{}, fmt.Errorf("aliyun credentials are not configured; run: cloud-forge auth aliyun")

@@ -99,6 +99,11 @@ func EnsureKeyPair(ctx context.Context, cfg Config, input EnsureKeyPairInput) (*
 	}, nil
 }
 
+// LocalKeyMaterial ensures an RSA private key exists at path and returns its SSH public key.
+func LocalKeyMaterial(privateKeyPath, comment string) (publicKey string, created bool, err error) {
+	return ensurePrivateKey(privateKeyPath, comment)
+}
+
 func resolvePrivateKeyPath(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return DefaultPrivateKeyPath()

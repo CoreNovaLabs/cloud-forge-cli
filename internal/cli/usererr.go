@@ -39,8 +39,6 @@ func formatUserError(err error) string {
 		return "Aliyun credentials are not configured. Run: cloud-forge auth aliyun"
 	case strings.Contains(msg, "check aliyun identity"):
 		return "Could not verify Aliyun credentials. Run: cloud-forge auth aliyun status"
-	case strings.Contains(msg, "aliyun v1 only supports region"):
-		return "Aliyun v1 only supports cn-hongkong. Pass --region cn-hongkong."
 	case strings.Contains(msg, "validate ros template"):
 		return formatAliyunDeployError(err)
 	case strings.Contains(msg, "create ros stack") || strings.Contains(msg, "update ros stack"):

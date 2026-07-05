@@ -19,7 +19,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.0"
+var Version = "0.3.1"
 
 const (
 	defaultAWSRegion    = "us-east-1"
@@ -928,7 +928,7 @@ func addAliyunAuthFlags(flags *flag.FlagSet) *authFlags {
 		region:  defaultAliyunRegion,
 	}
 	flags.StringVar(&auth.profile, "profile", auth.profile, "Aliyun credentials profile")
-	flags.StringVar(&auth.region, "region", auth.region, "default Aliyun region (v1: cn-hongkong)")
+	flags.StringVar(&auth.region, "region", auth.region, "default Aliyun region (default: cn-hongkong)")
 	return auth
 }
 

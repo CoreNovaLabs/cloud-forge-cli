@@ -42,7 +42,7 @@ Usage:
   cloud-forge version
   cloud-forge help [command]
 
-Aliyun v1 supports cn-hongkong only. First Aliyun bootstrap may take 8-15 minutes.
+Aliyun deploy defaults to cn-hongkong; use --region for other regions. Mainland China regions may fail bootstrap (Docker Hub / catalog CDN). First bootstrap may take 8-15 minutes.
 
 Exit codes:
   0  success
@@ -120,7 +120,7 @@ Create or update a CloudFormation (AWS) or ROS (Aliyun) stack for a catalog app.
 
 Flags:
   --cloud <aws|aliyun>         Cloud provider (default: aws)
-  --region <name>              AWS region (default: us-east-1) or Aliyun cn-hongkong
+  --region <name>              AWS region (default: us-east-1) or Aliyun region (default: cn-hongkong)
   --profile <name>             AWS shared config profile
   --stack-name <name>          Stack name (default: cloud-forge-<app>)
   --instance-type <type>       InstanceType parameter
@@ -139,7 +139,7 @@ Flags:
   --disk-size <gb>             DiskSize parameter
   --vpc, --vpc-id <id>         VpcId parameter
   --subnet, --subnet-id <id>   SubnetId parameter (AWS)
-  --vswitch-id <id>            VSwitchId parameter (Aliyun, required)
+  --vswitch-id <id>            VSwitchId parameter (Aliyun; auto-discovered when omitted)
   --image-id <id>              ImageId / LatestAmiId override
   --latest-ami-id <ami>        LatestAmiId parameter override (AWS)
   --caddy-tls-mode <mode>      CaddyTlsMode parameter
@@ -151,7 +151,7 @@ Flags:
 
 Examples:
   cloud-forge deploy hello-nginx --cloud aws --dry-run
-  cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key
+  cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong
 
 `)
 }
@@ -164,7 +164,7 @@ Delete a stack created by Cloud Forge.
 
 Flags:
   --cloud <aws|aliyun>       Cloud provider (default: aws)
-  --region <name>            AWS region (default: us-east-1) or Aliyun cn-hongkong
+  --region <name>            AWS region (default: us-east-1) or Aliyun region (default: cn-hongkong)
   --profile <name>           AWS shared config profile
   --no-wait                  Return immediately after starting deletion
   --timeout <duration>       Maximum wait time (default: 30m)

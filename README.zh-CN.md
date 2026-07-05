@@ -5,7 +5,7 @@
 <h1 align="center">Cloud Forge CLI</h1>
 
 <p align="center">
-  让开源应用可以一键部署到云端。支持 AWS（CloudFormation + 安全加固 AMI）与 Aliyun 香港（ROS），并内置授权向导。
+  让开源应用可以一键部署到云端。支持 AWS（CloudFormation + 安全加固 AMI）与 Aliyun（ROS），并内置授权向导。
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
   ·
   <a href="#aws-部署">AWS 部署</a>
   ·
-  <a href="#aliyun-部署香港">Aliyun 部署</a>
+  <a href="#aliyun-部署">Aliyun 部署</a>
   ·
   <a href="#命令参考">命令参考</a>
 </p>
@@ -43,7 +43,7 @@ Cloud Forge CLI 是 [Cloud Forge Catalog](https://github.com/CoreNovaLabs/cloud-
 | --- | --- |
 | 查找应用 | 用 `search` / `show` 浏览应用；参数与云支持来自各应用 manifest。 |
 | AWS 部署 | 创建或更新 CloudFormation 栈，并在终端查看进度。 |
-| Aliyun 部署 | 在香港（`cn-hongkong`）通过 ROS 创建 ECS + EIP 并引导应用容器。 |
+| Aliyun 部署 | 通过 ROS 创建 ECS + EIP 并引导应用容器（默认区域 `cn-hongkong`）。 |
 | 内置授权 | AWS 浏览器登录或 Access Key；Aliyun AccessKey 配置。 |
 | 清理资源 | 删除 Cloud Forge 创建的栈，释放关联云资源。 |
 
@@ -54,7 +54,7 @@ Cloud Forge CLI 是 [Cloud Forge Catalog](https://github.com/CoreNovaLabs/cloud-
 - `certified` 应用经过更完整云端验证，`community` 应用迭代更快
 - Aliyun v1 使用公共系统镜像 + UserData 引导，首次启动约 8～15 分钟
 
-默认区域：AWS `us-east-1`，Aliyun `cn-hongkong`。
+默认区域：AWS `us-east-1`，Aliyun `cn-hongkong`（可用 `--region` 覆盖；中国大陆区域可能因网络限制导致 bootstrap 失败）。
 
 ## 安装
 
@@ -130,7 +130,7 @@ cloud-forge deploy hello-nginx --cloud aws
 To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
 ```
 
-Aliyun 部署见 [Aliyun 部署（香港）](#aliyun-部署香港)。
+Aliyun 部署见 [Aliyun 部署](#aliyun-部署)。
 
 ## 清理资源
 
@@ -177,30 +177,34 @@ cloud-forge deploy hello-nginx --cloud aws --ssh-key none
 cloud-forge deploy hello-nginx --cloud aws --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
 ```
 
-## Aliyun 部署（香港）
+## Aliyun 部署
 
-Aliyun v1 使用 ROS 创建 ECS + EIP，并通过 UserData 引导 Docker/Caddy 与应用容器。与 AWS 预烘焙 AMI 不同，首次可用约 **8～15 分钟**。
+Aliyun 使用 ROS 创建 ECS + EIP，并通过 UserData 引导 Docker/Caddy 与应用容器。与 AWS 预烘焙 AMI 不同，首次可用约 **8～15 分钟**。
 
-仅支持 **`cn-hongkong`**。需预先创建 VPC、VSwitch 和 SSH KeyPair。
+**区域：** 默认 **`cn-hongkong`**。可用 `--region` 指定其他区域（如 `ap-southeast-1`）。**中国大陆区域**（`cn-hangzhou`、`cn-shanghai` 等）可能因 Docker Hub 与 catalog CDN 网络受限导致 bootstrap 失败或极慢，建议默认使用香港。
+
+**网络：** 省略 `--vpc-id`、`--vswitch-id`、`--key` 时，CLI 会在当前区域自动选用 VPC/VSwitch，并复用已有 KeyPair（或像 AWS 一样导入 `cloud-forge-default`）。可用 flag 或环境变量 `ALIYUN_VPC_ID`、`ALIYUN_VSWITCH_ID`、`ALIYUN_KEY_NAME` 覆盖。
 
 ```bash
 cloud-forge auth aliyun
 cloud-forge auth aliyun status
 
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx \
-  --vswitch-id vsw-xxx \
-  --key my-key \
-  --timeout 20m
+cloud-forge deploy hello-nginx --cloud aliyun --timeout 20m
+
+# 显式指定网络（可选）
+cloud-forge deploy hello-nginx --cloud aliyun \
+  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key
+
+# 其他区域
+cloud-forge deploy hello-nginx --cloud aliyun --region ap-southeast-1
 
 # 仅创建栈，不等待应用就绪
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --no-wait-ready
+cloud-forge deploy hello-nginx --cloud aliyun --no-wait-ready
 
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```
 
-ROS `CREATE_COMPLETE` 后，`deploy` 与 AWS 相同方式轮询 `ServiceURL`。加 `--no-wait-ready` 可跳过应用就绪等待。容器镜像使用 Docker Hub 短名（香港 ECS 可直连，无需 ACR）。
+ROS `CREATE_COMPLETE` 后，`deploy` 与 AWS 相同方式轮询 `ServiceURL`。加 `--no-wait-ready` 可跳过应用就绪等待。容器镜像使用 Docker Hub 短名；香港 ECS 通常可直连 Docker Hub，其他区域可能需要自行配置镜像加速或私有仓库。
 
 ## 常用选项
 
@@ -262,8 +266,7 @@ cloud-forge search hello --cloud aws
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --dry-run
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong --dry-run
 cloud-forge auth aws status
 cloud-forge auth aliyun status
 cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1

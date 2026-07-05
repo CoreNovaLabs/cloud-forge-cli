@@ -88,8 +88,8 @@ func (r Runner) Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	if region != aliyundeploy.SupportedRegion {
-		return fmt.Errorf("aliyun v1 only supports region %s", aliyundeploy.SupportedRegion)
+	if aliyundeploy.MainlandChinaRegion(region) {
+		fmt.Fprintf(r.Err, "Warning: mainland China regions may fail bootstrap (Docker Hub / catalog CDN reachability).\n")
 	}
 
 	cfg := Config{

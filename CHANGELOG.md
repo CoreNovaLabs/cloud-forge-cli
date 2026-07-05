@@ -4,16 +4,20 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-05
+
 ### Added
 
 - `AdminPassword` auto-generation and `--admin-password` deploy flag
-- `scripts/verify-admin-password-start.sh` local verification helper
+- Aliyun deploy auto-discovers VPC/VSwitch/KeyPair when `--vpc-id`, `--vswitch-id`, and `--key` are omitted (imports `cloud-forge-default` when needed)
 
 ### Changed
 
-- README (EN/zh-CN) and SMOKE-TEST: catalog-centric app discovery instead of fixed app list
+- README (EN/zh-CN) restructured; Quick Start no longer requires `--allowed-ip` by default
 - `verify-aws-apps.sh` and `verify-aliyun-apps.sh` select apps via catalog `list-verify-apps.sh` (default: `certified` tier)
-- Supports `CLOUD_FORGE_VERIFY_TIERS` and `CLOUD_FORGE_VERIFY_SAMPLE` for community random sampling
+- Aliyun region defaults to `cn-hongkong` but other regions are allowed; mainland China bootstrap warnings documented
+- Catalog search refreshes the index when cached results are empty
+- Version bumped to `0.3.1`
 
 ## [0.3.0] - 2026-07-04
 

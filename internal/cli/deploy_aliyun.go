@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ type aliyunStackDeployer interface {
 var newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
 	return aliyundeploy.New(ctx, cfg)
 }
+
+var resolveAliyunDeployDefaults = aliyundeploy.ResolveDeployDefaults
 
 func runAliyunDelete(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	started := time.Now()
@@ -155,6 +158,25 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
+	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Region: deploy.region})
+	if err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "aliyun_config",
+		})
+		printUserError(stderr, err)
+		return 1
+	}
+
+	if err := configureAliyunDeployDefaults(ctx, flags, deploy, stdout, deploy.dryRun); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "invalid_parameters",
+		})
+		printUserError(stderr, err)
+		return 2
+	}
+
 	parameters, err := buildAliyunDeployParameters(app, deploy)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -174,22 +196,15 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
-	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Region: deploy.region})
-	if err != nil {
-		track(common, ctx, telemetry.Event{
-			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
-			Status: "failed", DurationMS: durationMS(started), ErrorCode: "aliyun_config",
-		})
-		printUserError(stderr, err)
-		return 1
-	}
-
 	if !deploy.dryRun {
 		printAliyunDeployWarnings(stderr, app, parameters)
 	}
 
 	fmt.Fprintf(stdout, "Deploying %s to Aliyun stack %s\n", app.ID, stackName)
-	fmt.Fprintln(stdout, "Note: Aliyun v1 supports cn-hongkong only. First bootstrap may take 8-15 minutes.")
+	fmt.Fprintln(stdout, "Note: Aliyun defaults to cn-hongkong. First bootstrap may take 8-15 minutes.")
+	if aliyundeploy.MainlandChinaRegion(deploy.region) {
+		fmt.Fprintln(stdout, "Warning: mainland China regions may fail bootstrap due to Docker Hub / catalog CDN network restrictions.")
+	}
 	if deploy.dryRun {
 		fmt.Fprintln(stdout, "Mode: dry-run")
 	}
@@ -244,6 +259,40 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aliyun --region %s\n", stackName, result.Region)
 	}
 	return 0
+}
+
+func configureAliyunDeployDefaults(ctx context.Context, flags *flag.FlagSet, deploy *deployFlags, stdout io.Writer, dryRun bool) error {
+	autoVpc := !flagWasSet(flags, "vpc") && !flagWasSet(flags, "vpc-id") &&
+		strings.TrimSpace(deploy.vpcID) == "" && strings.TrimSpace(os.Getenv("ALIYUN_VPC_ID")) == ""
+	autoVSwitch := !flagWasSet(flags, "vswitch-id") &&
+		strings.TrimSpace(deploy.vswitchID) == "" && strings.TrimSpace(os.Getenv("ALIYUN_VSWITCH_ID")) == ""
+	autoKey := !flagWasSet(flags, "key") && !flagWasSet(flags, "key-name") &&
+		strings.TrimSpace(deploy.keyName) == "" && strings.TrimSpace(os.Getenv("ALIYUN_KEY_NAME")) == ""
+
+	if !autoVpc && !autoVSwitch && !autoKey {
+		return nil
+	}
+
+	result, err := resolveAliyunDeployDefaults(ctx, aliyundeploy.Config{Region: deploy.region}, aliyundeploy.DeployDefaultsRequest{
+		VpcID:       deploy.vpcID,
+		VSwitchID:   deploy.vswitchID,
+		KeyPairName: deploy.keyName,
+		AutoVpc:     autoVpc,
+		AutoVSwitch: autoVSwitch,
+		AutoKey:     autoKey,
+		DryRun:      dryRun,
+	})
+	if err != nil {
+		return err
+	}
+
+	deploy.vpcID = result.VpcID
+	deploy.vswitchID = result.VSwitchID
+	deploy.keyName = result.KeyPairName
+	for _, msg := range result.Messages {
+		fmt.Fprintln(stdout, msg)
+	}
+	return nil
 }
 
 func buildAliyunDeployParameters(app *store.App, deploy *deployFlags) (map[string]string, error) {

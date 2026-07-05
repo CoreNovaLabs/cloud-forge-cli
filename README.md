@@ -5,7 +5,7 @@
 <h1 align="center">Cloud Forge CLI</h1>
 
 <p align="center">
-  Turn open-source apps into one-command cloud deployments. Supports AWS (CloudFormation + hardened AMIs) and Aliyun Hong Kong (ROS), with guided credential setup.
+  Turn open-source apps into one-command cloud deployments. Supports AWS (CloudFormation + hardened AMIs) and Aliyun (ROS), with guided credential setup.
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
   ·
   <a href="#aws-deploy">AWS Deploy</a>
   ·
-  <a href="#aliyun-deploy-hong-kong">Aliyun Deploy</a>
+  <a href="#aliyun-deploy">Aliyun Deploy</a>
   ·
   <a href="#command-reference">Command Reference</a>
 </p>
@@ -43,7 +43,7 @@ Cloud Forge CLI is the command-line entry point for the [Cloud Forge Catalog](ht
 | --- | --- |
 | Catalog search | Browse apps with `search` / `show`; parameters and cloud support come from each manifest. |
 | AWS deploy | Create or update CloudFormation stacks and follow progress in the terminal. |
-| Aliyun deploy | Deploy to Hong Kong (`cn-hongkong`) via ROS with ECS + EIP and container bootstrap. |
+| Aliyun deploy | Deploy via ROS with ECS + EIP and container bootstrap (default region: `cn-hongkong`). |
 | Built-in auth | AWS browser sign-in or access keys; Aliyun AccessKey setup. |
 | Cleanup | Delete Cloud Forge stacks and release associated cloud resources. |
 
@@ -54,7 +54,7 @@ Cloud Forge CLI is the command-line entry point for the [Cloud Forge Catalog](ht
 - `certified` apps have fuller cloud verification; `community` apps iterate faster
 - Aliyun v1 uses public OS images with UserData bootstrap; first boot may take 8–15 minutes
 
-Default regions: AWS `us-east-1`, Aliyun `cn-hongkong`.
+Default regions: AWS `us-east-1`, Aliyun `cn-hongkong` (override with `--region`; mainland China regions may fail bootstrap due to network restrictions).
 
 ## Install
 
@@ -130,7 +130,7 @@ When the stack finishes, the CLI prints outputs and a cleanup hint:
 To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
 ```
 
-For Aliyun, see [Aliyun Deploy (Hong Kong)](#aliyun-deploy-hong-kong).
+For Aliyun, see [Aliyun Deploy](#aliyun-deploy).
 
 ## Cleanup
 
@@ -177,30 +177,34 @@ cloud-forge deploy hello-nginx --cloud aws --ssh-key none
 cloud-forge deploy hello-nginx --cloud aws --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
 ```
 
-## Aliyun Deploy (Hong Kong)
+## Aliyun Deploy
 
-Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
+Aliyun uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
 
-Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
+**Region:** defaults to **`cn-hongkong`**. Pass `--region` to deploy elsewhere (for example `ap-southeast-1`). **Mainland China regions** (`cn-hangzhou`, `cn-shanghai`, etc.) may fail bootstrap because Docker Hub and the catalog CDN are often unreachable or slow from those networks—Hong Kong is the recommended default.
+
+**Network:** if `--vpc-id`, `--vswitch-id`, and `--key` are omitted, the CLI discovers the first VPC/VSwitch in the region and uses an existing KeyPair (or imports `cloud-forge-default`, similar to AWS). Override with flags or `ALIYUN_VPC_ID`, `ALIYUN_VSWITCH_ID`, and `ALIYUN_KEY_NAME`.
 
 ```bash
 cloud-forge auth aliyun
 cloud-forge auth aliyun status
 
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx \
-  --vswitch-id vsw-xxx \
-  --key my-key \
-  --timeout 20m
+cloud-forge deploy hello-nginx --cloud aliyun --timeout 20m
+
+# Explicit network (optional)
+cloud-forge deploy hello-nginx --cloud aliyun \
+  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key
+
+# Another region
+cloud-forge deploy hello-nginx --cloud aliyun --region ap-southeast-1
 
 # Stack only — do not wait for bootstrap
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --no-wait-ready
+cloud-forge deploy hello-nginx --cloud aliyun --no-wait-ready
 
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```
 
-After ROS `CREATE_COMPLETE`, `deploy` polls `ServiceURL` the same way as AWS. Pass `--no-wait-ready` to skip app readiness waiting. Container images use Docker Hub short names (reachable from Hong Kong ECS without ACR).
+After ROS `CREATE_COMPLETE`, `deploy` polls `ServiceURL` the same way as AWS. Pass `--no-wait-ready` to skip app readiness waiting. Container images use Docker Hub short names; Hong Kong ECS typically reaches Docker Hub without ACR—other regions may need a mirror or registry you configure separately.
 
 ## Common Options
 
@@ -262,8 +266,7 @@ cloud-forge search hello --cloud aws
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --dry-run
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong --dry-run
 cloud-forge auth aws status
 cloud-forge auth aliyun status
 cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
