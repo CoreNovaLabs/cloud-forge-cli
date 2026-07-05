@@ -17,6 +17,7 @@ import (
 
 	"github.com/cloud-forge/cli/internal/aliyundeploy"
 	"github.com/cloud-forge/cli/internal/awsdeploy"
+	"github.com/cloud-forge/cli/pkg/store"
 )
 
 func TestSearchUsesLocalCatalog(t *testing.T) {
@@ -323,6 +324,102 @@ func TestDeployAWSImageIDAliasesLatestAMI(t *testing.T) {
 	}
 	if _, ok := gotInput.Parameters["ImageId"]; ok {
 		t.Fatalf("did not expect AWS ImageId parameter, got %#v", gotInput.Parameters)
+	}
+}
+
+func TestBuildAWSDeployParametersDBKeepsCatalogAMI(t *testing.T) {
+	app := &store.App{
+		AmiRole: "db",
+		Params: map[string]store.ParamDefinition{
+			"LatestAmiId": {
+				Type: "string",
+				AWS:  &store.CloudParam{Default: "ami-catalog"},
+			},
+		},
+	}
+
+	called := false
+	oldResolve := resolveLatestAWSAmi
+	resolveLatestAWSAmi = func(ctx context.Context, cfg awsdeploy.Config, productName, appRole, appVersion string) (string, error) {
+		called = true
+		return "ami-resolved", nil
+	}
+	t.Cleanup(func() { resolveLatestAWSAmi = oldResolve })
+
+	params, err := buildAWSDeployParameters(context.Background(), app, &deployFlags{}, awsdeploy.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("did not expect catalog AMI to be replaced by resolver")
+	}
+	if params["LatestAmiId"] != "ami-catalog" {
+		t.Fatalf("LatestAmiId = %q", params["LatestAmiId"])
+	}
+}
+
+func TestBuildAWSDeployParametersDBExplicitAMIOverridesResolver(t *testing.T) {
+	app := &store.App{
+		AmiRole: "db",
+		Params: map[string]store.ParamDefinition{
+			"LatestAmiId": {
+				Type: "string",
+				AWS:  &store.CloudParam{Default: "ami-catalog"},
+			},
+		},
+	}
+
+	called := false
+	oldResolve := resolveLatestAWSAmi
+	resolveLatestAWSAmi = func(ctx context.Context, cfg awsdeploy.Config, productName, appRole, appVersion string) (string, error) {
+		called = true
+		return "ami-resolved", nil
+	}
+	t.Cleanup(func() { resolveLatestAWSAmi = oldResolve })
+
+	params, err := buildAWSDeployParameters(context.Background(), app, &deployFlags{latestAMIID: "ami-explicit"}, awsdeploy.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("did not expect explicit AMI to be replaced by resolver")
+	}
+	if params["LatestAmiId"] != "ami-explicit" {
+		t.Fatalf("LatestAmiId = %q", params["LatestAmiId"])
+	}
+}
+
+func TestBuildAWSDeployParametersDBResolvesWhenNoAMIProvided(t *testing.T) {
+	app := &store.App{
+		AmiRole: "db",
+		Params: map[string]store.ParamDefinition{
+			"LatestAmiId": {
+				Type: "string",
+				AWS:  &store.CloudParam{},
+			},
+		},
+	}
+
+	called := false
+	oldResolve := resolveLatestAWSAmi
+	resolveLatestAWSAmi = func(ctx context.Context, cfg awsdeploy.Config, productName, appRole, appVersion string) (string, error) {
+		called = true
+		if productName != "Cloud Forge Hardened Database AMI" || appRole != "db" {
+			t.Fatalf("unexpected resolver input: product=%q role=%q", productName, appRole)
+		}
+		return "ami-resolved", nil
+	}
+	t.Cleanup(func() { resolveLatestAWSAmi = oldResolve })
+
+	params, err := buildAWSDeployParameters(context.Background(), app, &deployFlags{}, awsdeploy.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("expected AMI resolver to be called")
+	}
+	if params["LatestAmiId"] != "ami-resolved" {
+		t.Fatalf("LatestAmiId = %q", params["LatestAmiId"])
 	}
 }
 

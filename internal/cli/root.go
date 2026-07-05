@@ -19,7 +19,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.2"
+var Version = "0.3.3"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -99,6 +99,13 @@ var newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDe
 }
 
 var ensureAWSKeyPair = awsdeploy.EnsureKeyPair
+var resolveLatestAWSAmi = func(ctx context.Context, cfg awsdeploy.Config, productName, appRole, appVersion string) (string, error) {
+	deployer, err := awsdeploy.New(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+	return deployer.ResolveLatestAmi(ctx, productName, appRole, appVersion)
+}
 
 var validStackName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]{0,127}$`)
 
@@ -497,7 +504,10 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 
-	parameters, err := buildAWSDeployParameters(app, deploy)
+	parameters, err := buildAWSDeployParameters(ctx, app, deploy, awsdeploy.Config{
+		Region:  deploy.region,
+		Profile: deploy.profile,
+	})
 	if err != nil {
 		track(common, ctx, telemetry.Event{
 			Event:      "deploy",
@@ -599,6 +609,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	result, err := deployer.Deploy(ctx, awsdeploy.DeployInput{
 		AppID:        app.ID,
 		AppVersion:   app.Version,
+		AppRole:      app.AmiRole,
 		StackName:    stackName,
 		TemplateBody: body,
 		Parameters:   parameters,
@@ -758,6 +769,12 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Description: %s\n", app.Desc)
 	fmt.Fprintf(stdout, "Version:     %s\n", app.Version)
 	fmt.Fprintf(stdout, "Category:    %s\n", app.Category)
+	if app.AmiRole != "" {
+		fmt.Fprintf(stdout, "AMI role:    %s\n", app.AmiRole)
+	}
+	if app.ServicePort > 0 {
+		fmt.Fprintf(stdout, "Service port:%6d\n", app.ServicePort)
+	}
 	fmt.Fprintf(stdout, "Clouds:      %s\n", formatCloudSupport(app.Clouds))
 	if app.Price != "" {
 		fmt.Fprintf(stdout, "Price:       %s\n", app.Price)
@@ -1200,7 +1217,7 @@ func appAcceptsAWSParam(app *store.App, name string) bool {
 	return ok && paramAppliesToCloud(definition, "aws")
 }
 
-func buildAWSDeployParameters(app *store.App, deploy *deployFlags) (map[string]string, error) {
+func buildAWSDeployParameters(ctx context.Context, app *store.App, deploy *deployFlags, awsCfg awsdeploy.Config) (map[string]string, error) {
 	params := make(map[string]string)
 	skipKeyNameDefault := deploy.sshKey == "none"
 	for name, definition := range app.Params {
@@ -1227,7 +1244,21 @@ func buildAWSDeployParameters(app *store.App, deploy *deployFlags) (map[string]s
 	if latestAMIID == "" {
 		latestAMIID = deploy.imageID
 	}
+	explicitLatestAMIID := latestAMIID != ""
+	if _, ok := deploy.parameters["LatestAmiId"]; ok {
+		explicitLatestAMIID = true
+	}
 	setParameter(params, "LatestAmiId", latestAMIID)
+	role := strings.TrimSpace(app.AmiRole)
+	if role == "db" && !explicitLatestAMIID && strings.TrimSpace(params["LatestAmiId"]) == "" {
+		productName := "Cloud Forge Hardened Database AMI"
+		var err error
+		latestAMIID, err = resolveLatestAWSAmi(ctx, awsCfg, productName, role, "")
+		if err != nil {
+			return nil, err
+		}
+		setParameter(params, "LatestAmiId", latestAMIID)
+	}
 	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
 	setParameter(params, "CaddyEmail", deploy.caddyEmail)
 	for name, value := range deploy.parameters {

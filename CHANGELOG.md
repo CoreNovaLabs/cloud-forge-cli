@@ -4,6 +4,18 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-05
+
+### Added
+
+- Catalog `ami_role` and `service_port` fields in `show`
+- TCP readiness probes for non-HTTP service URLs such as PostgreSQL, MySQL, Redis, MongoDB, and MQTT
+- AWS AMI discovery hook for database-role catalog apps when no `LatestAmiId` is provided
+
+### Changed
+
+- AWS deploy parameter building preserves catalog/default AMI IDs and explicit `--latest-ami-id` / `--image-id` overrides before attempting database AMI discovery
+
 ## [0.3.2] - 2026-07-05
 
 ### Added

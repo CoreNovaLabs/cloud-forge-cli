@@ -23,11 +23,13 @@ type App struct {
 	Desc          string                     `json:"desc"`
 	Icon          string                     `json:"icon,omitempty"`
 	Category      string                     `json:"category"`
+	AmiRole       string                     `json:"ami_role,omitempty"`
 	Tags          []string                   `json:"tags,omitempty"`
 	Stars         int                        `json:"stars,omitempty"`
 	Clouds        []string                   `json:"clouds"`
 	Version       string                     `json:"version"`
 	MinCLIVersion string                     `json:"min_cli_version,omitempty"`
+	ServicePort   int                        `json:"service_port,omitempty"`
 	Price         string                     `json:"price,omitempty"`
 	CostNotice    []string                   `json:"cost_notice,omitempty"`
 	Images        map[string]string          `json:"images"`

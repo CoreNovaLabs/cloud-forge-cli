@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/cloud-forge/cli/internal/awsdeploy"
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
@@ -122,7 +124,7 @@ func TestGeneratedPasswordFlowsToDeployParameters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params, err := buildAWSDeployParameters(app, deploy)
+	params, err := buildAWSDeployParameters(context.Background(), app, deploy, awsdeploy.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

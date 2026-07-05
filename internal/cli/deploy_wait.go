@@ -30,12 +30,16 @@ var insecureIPServiceHTTPClient = &http.Client{
 	},
 }
 
-// probeURLs derives candidate health-check URLs from stack outputs. It prefers
-// ServiceURL and falls back to https://<PublicIP>. Both /health and the root
-// path are probed so apps without a dedicated health endpoint still report
-// readiness. The logic is cloud-agnostic: any deployer that exposes a
-// ServiceURL or PublicIP output can use it.
-func probeURLs(outputs map[string]string) []string {
+type serviceProbe struct {
+	display string
+	url     string
+	tcpAddr string
+}
+
+// probeTargets derives readiness probes from stack outputs. HTTP services are
+// probed with /health and /, while non-HTTP ServiceURL schemes such as mysql
+// or postgresql are treated as TCP endpoints.
+func probeTargets(outputs map[string]string) []serviceProbe {
 	base := strings.TrimSpace(outputs["ServiceURL"])
 	if base == "" {
 		if ip := strings.TrimSpace(outputs["PublicIP"]); ip != "" {
@@ -45,17 +49,49 @@ func probeURLs(outputs map[string]string) []string {
 	if base == "" {
 		return nil
 	}
-	base = strings.TrimRight(base, "/")
-	return []string{base + "/health", base + "/"}
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return nil
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https", "":
+		base = strings.TrimRight(base, "/")
+		return []serviceProbe{
+			{display: base + "/health", url: base + "/health"},
+			{display: base + "/", url: base + "/"},
+		}
+	default:
+		host := strings.TrimSpace(parsed.Hostname())
+		port := strings.TrimSpace(parsed.Port())
+		if host == "" || port == "" {
+			return nil
+		}
+		return []serviceProbe{
+			{
+				display: base,
+				tcpAddr: net.JoinHostPort(host, port),
+			},
+		}
+	}
+}
+
+func probeDisplayStrings(probes []serviceProbe) []string {
+	out := make([]string, 0, len(probes))
+	for _, probe := range probes {
+		out = append(out, probe.display)
+	}
+	return out
 }
 
 // serviceReady reports whether the given URL responds with a 2xx status.
-func serviceReady(ctx context.Context, url string) bool {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func serviceReady(ctx context.Context, rawURL string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return false
 	}
-	resp, err := serviceHTTPClientForURL(url).Do(req)
+	resp, err := serviceHTTPClientForURL(rawURL).Do(req)
 	if err != nil {
 		return false
 	}
@@ -74,27 +110,45 @@ func serviceHTTPClientForURL(rawURL string) *http.Client {
 	return serviceHTTPClient
 }
 
-// waitServiceReady polls the deployed endpoint until it responds 2xx or the
-// deadline expires. It is cloud-agnostic; callers pass the stack outputs and
-// a deadline derived from the deploy --timeout.
+// tcpServiceReady reports whether the given TCP address accepts a connection.
+func tcpServiceReady(ctx context.Context, addr string) bool {
+	dialer := &net.Dialer{Timeout: 15 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// waitServiceReady polls the deployed endpoint until the HTTP target responds
+// 2xx or the TCP target accepts a connection, or the deadline expires. It is
+// cloud-agnostic; callers pass the stack outputs and a deadline derived from
+// the deploy --timeout.
 func waitServiceReady(ctx context.Context, stdout io.Writer, outputs map[string]string, deadline time.Time, showProgress bool) error {
-	urls := probeURLs(outputs)
-	if len(urls) == 0 {
+	probes := probeTargets(outputs)
+	if len(probes) == 0 {
 		return fmt.Errorf("cannot wait for service ready: stack outputs missing ServiceURL and PublicIP")
 	}
 
 	fmt.Fprintln(stdout, "\nStack CREATE_COMPLETE. Waiting for app bootstrap...")
-	printBootstrapWaitHints(stdout, outputs, urls)
+	printBootstrapWaitHints(stdout, outputs, probeDisplayStrings(probes))
 	attempt := 0
 	ticker := time.NewTicker(bootstrapPollInterval)
 	defer ticker.Stop()
 
 	for {
 		attempt++
-		for _, url := range urls {
-			if serviceReady(ctx, url) {
+		for _, probe := range probes {
+			ready := false
+			if probe.tcpAddr != "" {
+				ready = tcpServiceReady(ctx, probe.tcpAddr)
+			} else {
+				ready = serviceReady(ctx, probe.url)
+			}
+			if ready {
 				if showProgress {
-					fmt.Fprintf(stdout, "[%s] bootstrap ready (%s)\n", time.Now().Local().Format("15:04:05"), url)
+					fmt.Fprintf(stdout, "[%s] bootstrap ready (%s)\n", time.Now().Local().Format("15:04:05"), probe.display)
 				}
 				fmt.Fprintln(stdout, "Service is ready.")
 				return nil
@@ -104,9 +158,9 @@ func waitServiceReady(ctx context.Context, stdout io.Writer, outputs map[string]
 		if time.Now().After(deadline) {
 			publicIP := strings.TrimSpace(outputs["PublicIP"])
 			if publicIP != "" {
-				return fmt.Errorf("timed out waiting for app bootstrap; stack was created but ServiceURL is not responding yet (Public IP: %s). Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)", publicIP)
+				return fmt.Errorf("timed out waiting for app bootstrap; stack was created but the service is not ready yet (Public IP: %s). Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)", publicIP)
 			}
-			return fmt.Errorf("timed out waiting for app bootstrap; stack was created but ServiceURL is not responding yet. Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)")
+			return fmt.Errorf("timed out waiting for app bootstrap; stack was created but the service is not ready yet. Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)")
 		}
 
 		if showProgress {

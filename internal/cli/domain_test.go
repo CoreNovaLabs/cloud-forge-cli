@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/cloud-forge/cli/internal/awsdeploy"
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
@@ -217,7 +219,7 @@ func TestBuildAWSDeployParametersDomain(t *testing.T) {
 		hostedZoneID: "Z123",
 		caddyEmail:   "ops@example.com",
 	}
-	params, err := buildAWSDeployParameters(app, deploy)
+	params, err := buildAWSDeployParameters(context.Background(), app, deploy, awsdeploy.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

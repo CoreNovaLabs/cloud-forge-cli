@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	cfntypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 )
@@ -34,6 +35,7 @@ type Deployer struct {
 type DeployInput struct {
 	AppID        string
 	AppVersion   string
+	AppRole      string
 	StackName    string
 	TemplateBody string
 	Parameters   map[string]string
@@ -231,6 +233,37 @@ func (d *Deployer) Deploy(ctx context.Context, input DeployInput) (*DeployOutput
 	}
 	out.Status = "UPDATE_IN_PROGRESS"
 	return out, nil
+}
+
+func (d *Deployer) ResolveLatestAmi(ctx context.Context, productName, appRole, appVersion string) (string, error) {
+	productName = strings.TrimSpace(productName)
+	if productName == "" {
+		return "", fmt.Errorf("product name is required")
+	}
+	filters := []ec2types.Filter{
+		{Name: awssdk.String("tag:Product"), Values: []string{productName}},
+		{Name: awssdk.String("state"), Values: []string{"available"}},
+	}
+	if role := strings.TrimSpace(appRole); role != "" {
+		filters = append(filters, ec2types.Filter{Name: awssdk.String("tag:Profile"), Values: []string{role}})
+	}
+	if version := strings.TrimSpace(appVersion); version != "" {
+		filters = append(filters, ec2types.Filter{Name: awssdk.String("tag:Version"), Values: []string{version}})
+	}
+	out, err := d.ec2.DescribeImages(ctx, &ec2.DescribeImagesInput{
+		Owners:  []string{"self"},
+		Filters: filters,
+	})
+	if err != nil {
+		return "", fmt.Errorf("describe images: %w", err)
+	}
+	if len(out.Images) == 0 {
+		return "", fmt.Errorf("no available AMI found for %q (role %q, version %q)", productName, appRole, appVersion)
+	}
+	sort.Slice(out.Images, func(i, j int) bool {
+		return awssdk.ToString(out.Images[i].CreationDate) > awssdk.ToString(out.Images[j].CreationDate)
+	})
+	return awssdk.ToString(out.Images[0].ImageId), nil
 }
 
 func validateInput(input DeployInput) error {
