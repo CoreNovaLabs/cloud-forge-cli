@@ -974,7 +974,7 @@ func loadApps(ctx context.Context, common *commonFlags, filter store.Filter, std
 		return nil, 1
 	}
 	if len(apps) == 0 {
-		if refreshed, refreshErr := refreshStoreOnMiss(ctx, st, stderr); refreshErr != nil {
+		if refreshed, refreshErr := refreshStoreOnMiss(ctx, st); refreshErr != nil {
 			fmt.Fprintf(stderr, "warning: refresh catalog after empty search: %v\n", refreshErr)
 		} else if refreshed {
 			apps, err = st.List(filter)
@@ -987,7 +987,7 @@ func loadApps(ctx context.Context, common *commonFlags, filter store.Filter, std
 	return apps, 0
 }
 
-func refreshStoreOnMiss(ctx context.Context, st store.Store, stderr io.Writer) (bool, error) {
+func refreshStoreOnMiss(ctx context.Context, st store.Store) (bool, error) {
 	type refreshable interface {
 		IndexFromCache() bool
 		Refresh(context.Context) error
@@ -996,7 +996,6 @@ func refreshStoreOnMiss(ctx context.Context, st store.Store, stderr io.Writer) (
 	if !ok || !r.IndexFromCache() {
 		return false, nil
 	}
-	fmt.Fprintln(stderr, "No matches in cached catalog; refreshing index...")
 	if err := r.Refresh(ctx); err != nil {
 		return false, err
 	}

@@ -100,9 +100,6 @@ func TestSearchRefreshesCatalogOnMiss(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "refreshing index") {
-		t.Fatalf("expected refresh notice on stderr, got: %s", stderr.String())
-	}
 	if !strings.Contains(stdout.String(), "freshrss") {
 		t.Fatalf("expected search output to include freshrss, got stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
