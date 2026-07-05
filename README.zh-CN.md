@@ -230,7 +230,7 @@ cloud-forge deploy hello-nginx --cloud aws \
 - **实例：** `--instance-type`、`--disk-size`、`--image-id`、`--latest-ami-id`
 - **网络：** `--vpc` / `--vpc-id`、`--subnet` / `--subnet-id`、`--vswitch-id`、`--allowed-ip`
 - **SSH / 密钥：** `--key` / `--key-name`、`--ssh-key`、`--ssh-key-path`
-- **DNS / TLS：** `--domain`、`--hosted-zone-id`、`--caddy-tls-mode`
+- **DNS / TLS：** `--domain`、`--hosted-zone-id`（AWS Route53）、`--dns-domain`（阿里云 Alidns）、`--caddy-tls-mode`、`--caddy-email`
 - **其他：** `--progress`、`--admin-password`
 
 ## 应用密码（AdminPassword）
@@ -244,6 +244,32 @@ cloud-forge deploy minio --cloud aws --param AdminPassword='MyStr0ngPass'
 ```
 
 未指定时，CLI 自动生成 24 位随机密码，写入 IaC 参数，并在**成功 deploy 后打印一次**（`--dry-run` 仅提示将自动生成）。密码不会写入 Stack Outputs 或使用统计。
+
+## 自定义域名
+
+使用 `--domain` 绑定 HTTPS 访问域名。DNS 可自动创建或手动配置。
+
+**AWS（Route53）：**
+
+```bash
+cloud-forge deploy gitea --cloud aws \
+  --domain git.example.com \
+  --hosted-zone-id Z1234567890 \
+  --caddy-email ops@example.com
+```
+
+**阿里云（Alidns）：** 根域名须已在[阿里云云解析 DNS](https://dns.console.aliyun.com/) 托管；部署 RAM 用户需 DNS 写权限（如 `AliyunDNSFullAccess`）。
+
+```bash
+cloud-forge deploy gitea --cloud aliyun --region cn-hongkong \
+  --domain git.example.com \
+  --dns-domain example.com \
+  --caddy-email ops@example.com
+```
+
+**手动 DNS：** 仅传 `--domain`（省略 `--hosted-zone-id` 或 `--dns-domain`），CLI 会提示手动添加指向 EIP 的 A 记录。DNS 传播与 Let's Encrypt 证书签发可能需要数分钟；域名部署建议 `--timeout` ≥ 15m 并配合 `--wait-ready`。
+
+未指定 `--domain` 时，默认仍为 Let's Encrypt **IP** 证书（`ip-letsencrypt`），`ServiceURL` 使用弹性 IP。
 
 ## 应用目录来源
 

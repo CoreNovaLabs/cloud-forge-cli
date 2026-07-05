@@ -68,6 +68,7 @@ func waitServiceReady(ctx context.Context, stdout io.Writer, outputs map[string]
 	}
 
 	fmt.Fprintln(stdout, "\nStack CREATE_COMPLETE. Waiting for app bootstrap...")
+	printBootstrapWaitHints(stdout, outputs, urls)
 	attempt := 0
 	ticker := time.NewTicker(bootstrapPollInterval)
 	defer ticker.Stop()
@@ -85,6 +86,10 @@ func waitServiceReady(ctx context.Context, stdout io.Writer, outputs map[string]
 		}
 
 		if time.Now().After(deadline) {
+			publicIP := strings.TrimSpace(outputs["PublicIP"])
+			if publicIP != "" {
+				return fmt.Errorf("timed out waiting for app bootstrap; stack was created but ServiceURL is not responding yet (Public IP: %s). Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)", publicIP)
+			}
 			return fmt.Errorf("timed out waiting for app bootstrap; stack was created but ServiceURL is not responding yet. Try again in a few minutes or check the instance bootstrap logs (e.g. /var/log/cloud-init-output.log)")
 		}
 

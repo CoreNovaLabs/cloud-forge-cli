@@ -134,15 +134,17 @@ Flags:
   --ssh-key <auto|none>        Manage a local SSH key automatically (AWS only, default: auto)
   --ssh-key-path <path>        Private key path for --ssh-key auto (AWS only)
   --key, --key-name <name>     AWS EC2 key pair or Aliyun KeyPairName
-  --domain <name>              DomainName parameter
-  --hosted-zone-id <id>        HostedZoneId parameter (AWS)
+  --domain <name>              DomainName parameter (custom HTTPS endpoint)
+  --hosted-zone-id <id>        Route53 hosted zone ID (AWS; with --domain)
+  --dns-domain <name>          Aliyun DNS root domain (with --domain for automatic A records)
   --disk-size <gb>             DiskSize parameter
   --vpc, --vpc-id <id>         VpcId parameter
   --subnet, --subnet-id <id>   SubnetId parameter (AWS)
   --vswitch-id <id>            VSwitchId parameter (Aliyun; auto-discovered when omitted)
   --image-id <id>              ImageId / LatestAmiId override
   --latest-ami-id <ami>        LatestAmiId parameter override (AWS)
-  --caddy-tls-mode <mode>      CaddyTlsMode parameter
+  --caddy-tls-mode <mode>      CaddyTlsMode parameter (auto, ip-letsencrypt, http, internal)
+  --caddy-email <email>        ACME contact email for Caddy public certificates
   --admin-password <password>  AdminPassword for apps that require it (auto-generated when omitted)
   --param, --parameter <k=v>   Parameter override (repeatable)
   --store-url <url>            Catalog index URL or local file path

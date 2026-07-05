@@ -4,6 +4,22 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-05
+
+### Added
+
+- End-to-end custom domain binding: `--domain` flows through IaC, bootstrap, Caddy, and `ServiceURL`
+- Aliyun automatic DNS A records via `--dns-domain` (ROS `ALIYUN::DNS::DomainRecord`, aligned with AWS Route53 + `--hosted-zone-id`)
+- `--caddy-email` for optional ACME contact email
+- Domain validation and deploy hints (Route53 / Alidns / manual DNS warnings)
+- Deploy progress prints public IP as soon as the EIP resource completes (AWS and Aliyun)
+- Bootstrap wait logs show Public IP, Service URL, and probe targets before polling starts
+
+### Changed
+
+- Catalog templates pass `CLOUD_FORGE_DOMAIN_NAME` to bootstrap; domain mode uses Caddy `auto` TLS instead of IP certificates
+- `CaddyTlsMode` catalog options include `auto`
+
 ## [0.3.1] - 2026-07-05
 
 ### Added

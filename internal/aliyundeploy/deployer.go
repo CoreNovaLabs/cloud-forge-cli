@@ -65,6 +65,7 @@ type StackProgressEvent struct {
 	ResourceType         string
 	ResourceStatus       string
 	ResourceStatusReason string
+	PublicIP             string
 }
 
 func New(ctx context.Context, cfg Config) (*Deployer, error) {
@@ -425,6 +426,7 @@ func (d *Deployer) emitStackEvents(ctx context.Context, stackName string, since 
 		events = append(events, event)
 		seen[eventID] = true
 	}
+	stackIDValue := tea.StringValue(stackID)
 	for i := len(events) - 1; i >= 0; i-- {
 		event := events[i]
 		var ts time.Time
@@ -433,15 +435,67 @@ func (d *Deployer) emitStackEvents(ctx context.Context, stackName string, since 
 				ts = parsed
 			}
 		}
-		progress(StackProgressEvent{
+		progressEvent := StackProgressEvent{
 			Timestamp:            ts,
 			LogicalResourceID:    tea.StringValue(event.LogicalResourceId),
 			ResourceType:         tea.StringValue(event.ResourceType),
 			ResourceStatus:       tea.StringValue(event.Status),
 			ResourceStatusReason: tea.StringValue(event.StatusReason),
-		})
+		}
+		if shouldResolveEIPPublicIP(progressEvent.ResourceType, progressEvent.ResourceStatus) {
+			if ip, err := d.eipPublicIP(stackIDValue, progressEvent.LogicalResourceID); err == nil {
+				progressEvent.PublicIP = ip
+			}
+		}
+		progress(progressEvent)
 	}
 	return nil
+}
+
+func shouldResolveEIPPublicIP(resourceType, resourceStatus string) bool {
+	if resourceType != "ALIYUN::VPC::EIP" {
+		return false
+	}
+	switch resourceStatus {
+	case "CREATE_COMPLETE", "UPDATE_COMPLETE":
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Deployer) eipPublicIP(stackID, logicalResourceID string) (string, error) {
+	if stackID == "" || logicalResourceID == "" {
+		return "", nil
+	}
+	out, err := d.ros.GetStackResource(&ros.GetStackResourceRequest{
+		RegionId:               tea.String(d.region),
+		StackId:                tea.String(stackID),
+		LogicalResourceId:      tea.String(logicalResourceID),
+		ShowResourceAttributes: tea.Bool(true),
+		ResourceAttributes:     []*string{tea.String("EipAddress")},
+	})
+	if err != nil {
+		return "", err
+	}
+	if out.Body == nil {
+		return "", nil
+	}
+	return resourceAttributeString(out.Body.ResourceAttributes, "EipAddress"), nil
+}
+
+func resourceAttributeString(attrs []map[string]interface{}, key string) string {
+	for _, attr := range attrs {
+		if attr == nil {
+			continue
+		}
+		if value, ok := attr[key]; ok {
+			if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 func (d *Deployer) finalOutput(out *DeployOutput, stackName string) (*DeployOutput, error) {

@@ -177,6 +177,15 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
+	if err := validateDomainConfig("aliyun", deploy, stderr); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "invalid_parameters",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+
 	parameters, err := buildAliyunDeployParameters(app, deploy)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -201,6 +210,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 
 	fmt.Fprintf(stdout, "Deploying %s to Aliyun stack %s\n", app.ID, stackName)
+	printDomainDeployHints("aliyun", deploy, stdout)
 	fmt.Fprintln(stdout, "Note: Aliyun defaults to cn-hongkong. First bootstrap may take 8-15 minutes.")
 	if aliyundeploy.MainlandChinaRegion(deploy.region) {
 		fmt.Fprintln(stdout, "Warning: mainland China regions may fail bootstrap due to Docker Hub / catalog CDN network restrictions.")
@@ -315,6 +325,15 @@ func buildAliyunDeployParameters(app *store.App, deploy *deployFlags) (map[strin
 	setParameter(params, "AllowedIP", deploy.allowedIP)
 	setParameter(params, "ImageId", deploy.imageID)
 	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
+	setParameter(params, "CaddyEmail", deploy.caddyEmail)
+	setParameter(params, "DnsDomainName", deploy.dnsDomainName)
+	if deploy.domainName != "" && deploy.dnsDomainName != "" {
+		if rr, err := resolveDnsRR(deploy.domainName, deploy.dnsDomainName); err != nil {
+			return nil, err
+		} else {
+			params["DnsRR"] = rr
+		}
+	}
 	for name, value := range deploy.parameters {
 		params[name] = value
 	}
@@ -336,15 +355,14 @@ func applyAliyunRegionDefaults(flags *flag.FlagSet, region *string) {
 
 func printAliyunStackProgress(stdout io.Writer) func(aliyundeploy.StackProgressEvent) {
 	return func(event aliyundeploy.StackProgressEvent) {
-		timestamp := event.Timestamp.Local().Format("15:04:05")
-		resourceType := stringsTrimOr(event.ResourceType, "-")
-		resourceID := stringsTrimOr(event.LogicalResourceID, "-")
-		status := stringsTrimOr(event.ResourceStatus, "-")
-		fmt.Fprintf(stdout, "[%s] %s %s %s", timestamp, resourceType, resourceID, status)
-		if reason := strings.TrimSpace(event.ResourceStatusReason); reason != "" {
-			fmt.Fprintf(stdout, " - %s", reason)
-		}
-		fmt.Fprintln(stdout)
+		printStackProgressLine(stdout, stackProgressLine{
+			Timestamp:            event.Timestamp,
+			ResourceType:         event.ResourceType,
+			LogicalResourceID:    event.LogicalResourceID,
+			ResourceStatus:       event.ResourceStatus,
+			ResourceStatusReason: event.ResourceStatusReason,
+			PublicIP:             event.PublicIP,
+		})
 	}
 }
 

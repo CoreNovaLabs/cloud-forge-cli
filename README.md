@@ -230,7 +230,7 @@ Common deploy flags (each app may expose more—run `cloud-forge show <app>`):
 - **Instance:** `--instance-type`, `--disk-size`, `--image-id`, `--latest-ami-id`
 - **Network:** `--vpc` / `--vpc-id`, `--subnet` / `--subnet-id`, `--vswitch-id`, `--allowed-ip`
 - **SSH / keys:** `--key` / `--key-name`, `--ssh-key`, `--ssh-key-path`
-- **DNS / TLS:** `--domain`, `--hosted-zone-id`, `--caddy-tls-mode`
+- **DNS / TLS:** `--domain`, `--hosted-zone-id` (AWS Route53), `--dns-domain` (Aliyun Alidns), `--caddy-tls-mode`, `--caddy-email`
 - **Other:** `--progress`, `--admin-password`
 
 ## Admin Password
@@ -244,6 +244,32 @@ cloud-forge deploy minio --cloud aws --param AdminPassword='MyStr0ngPass'
 ```
 
 If omitted, the CLI generates a random 24-character password, passes it into IaC parameters, and **prints it once after a successful deploy** (`--dry-run` only notes that a password will be generated). Passwords are not written to stack outputs or telemetry.
+
+## Custom Domain
+
+Bind a custom HTTPS endpoint with `--domain`. DNS can be automated or manual.
+
+**AWS (Route53):**
+
+```bash
+cloud-forge deploy gitea --cloud aws \
+  --domain git.example.com \
+  --hosted-zone-id Z1234567890 \
+  --caddy-email ops@example.com
+```
+
+**Aliyun (Alidns):** the root domain must already be hosted in [Alibaba Cloud DNS](https://dns.console.aliyun.com/). The deploying RAM user needs DNS write permission (for example `AliyunDNSFullAccess`).
+
+```bash
+cloud-forge deploy gitea --cloud aliyun --region cn-hongkong \
+  --domain git.example.com \
+  --dns-domain example.com \
+  --caddy-email ops@example.com
+```
+
+**Manual DNS:** pass `--domain` only (omit `--hosted-zone-id` or `--dns-domain`). The CLI warns you to create an A record pointing to the instance EIP. DNS propagation and Let's Encrypt certificate issuance may take several minutes; use `--timeout` ≥ 15m for domain deploys with `--wait-ready`.
+
+Without `--domain`, the default remains Let's Encrypt **IP** certificates (`ip-letsencrypt`) and `ServiceURL` uses the elastic IP.
 
 ## Catalog Reference
 

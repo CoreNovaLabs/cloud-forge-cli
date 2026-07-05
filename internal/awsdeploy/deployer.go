@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	cfntypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 )
@@ -26,6 +27,7 @@ type Config struct {
 type Deployer struct {
 	region string
 	cfn    *cloudformation.Client
+	ec2    *ec2.Client
 	sts    *sts.Client
 }
 
@@ -57,6 +59,7 @@ type StackProgressEvent struct {
 	ResourceType         string
 	ResourceStatus       string
 	ResourceStatusReason string
+	PublicIP             string
 }
 
 func New(ctx context.Context, cfg Config) (*Deployer, error) {
@@ -68,6 +71,7 @@ func New(ctx context.Context, cfg Config) (*Deployer, error) {
 	return &Deployer{
 		region: awsCfg.Region,
 		cfn:    cloudformation.NewFromConfig(awsCfg),
+		ec2:    ec2.NewFromConfig(awsCfg),
 		sts:    sts.NewFromConfig(awsCfg),
 	}, nil
 }
@@ -421,15 +425,53 @@ func (d *Deployer) emitStackEvents(ctx context.Context, stackName string, since 
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		event := events[i]
-		progress(StackProgressEvent{
+		progressEvent := StackProgressEvent{
 			Timestamp:            awssdk.ToTime(event.Timestamp),
 			LogicalResourceID:    awssdk.ToString(event.LogicalResourceId),
 			ResourceType:         awssdk.ToString(event.ResourceType),
 			ResourceStatus:       string(event.ResourceStatus),
 			ResourceStatusReason: awssdk.ToString(event.ResourceStatusReason),
-		})
+		}
+		if shouldResolveAWSEIPPublicIP(progressEvent.ResourceType, progressEvent.ResourceStatus) {
+			if ip, err := d.eipPublicIP(ctx, awssdk.ToString(event.PhysicalResourceId)); err == nil {
+				progressEvent.PublicIP = ip
+			}
+		}
+		progress(progressEvent)
 	}
 	return nil
+}
+
+func shouldResolveAWSEIPPublicIP(resourceType, resourceStatus string) bool {
+	if resourceType != "AWS::EC2::EIP" {
+		return false
+	}
+	switch resourceStatus {
+	case string(cfntypes.ResourceStatusCreateComplete),
+		string(cfntypes.ResourceStatusUpdateComplete):
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Deployer) eipPublicIP(ctx context.Context, allocationID string) (string, error) {
+	allocationID = strings.TrimSpace(allocationID)
+	if allocationID == "" {
+		return "", nil
+	}
+	out, err := d.ec2.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{
+		AllocationIds: []string{allocationID},
+	})
+	if err != nil {
+		return "", err
+	}
+	for _, address := range out.Addresses {
+		if ip := strings.TrimSpace(awssdk.ToString(address.PublicIp)); ip != "" {
+			return ip, nil
+		}
+	}
+	return "", nil
 }
 
 func (d *Deployer) finalOutput(ctx context.Context, out *DeployOutput, stackName string) (*DeployOutput, error) {

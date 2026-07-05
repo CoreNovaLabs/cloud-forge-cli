@@ -27,6 +27,19 @@ func TestProbeURLs(t *testing.T) {
 	}
 }
 
+func TestProbeURLsIPServiceURL(t *testing.T) {
+	urls := probeURLs(map[string]string{
+		"ServiceURL": "https://203.0.113.10",
+		"PublicIP":   "203.0.113.10",
+	})
+	if len(urls) != 2 {
+		t.Fatalf("unexpected url count: %#v", urls)
+	}
+	if urls[0] != "https://203.0.113.10/health" || urls[1] != "https://203.0.113.10/" {
+		t.Fatalf("unexpected urls: %#v", urls)
+	}
+}
+
 func TestServiceReady(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
@@ -67,7 +80,10 @@ func TestWaitServiceReady(t *testing.T) {
 	err := waitServiceReady(
 		context.Background(),
 		&stdout,
-		map[string]string{"ServiceURL": server.URL},
+		map[string]string{
+			"ServiceURL": server.URL,
+			"PublicIP":   "203.0.113.10",
+		},
 		time.Now().Add(5*time.Second),
 		true,
 	)
@@ -76,6 +92,9 @@ func TestWaitServiceReady(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("Service is ready.")) {
 		t.Fatalf("expected ready message, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("Public IP:      203.0.113.10")) {
+		t.Fatalf("expected public IP hint, got: %s", stdout.String())
 	}
 }
 

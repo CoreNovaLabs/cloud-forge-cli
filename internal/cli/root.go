@@ -19,7 +19,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.1"
+var Version = "0.3.2"
 
 const (
 	defaultAWSRegion    = "us-east-1"
@@ -54,6 +54,8 @@ type deployFlags struct {
 	sshKeyPath   string
 	domainName   string
 	hostedZoneID string
+	dnsDomainName string
+	caddyEmail   string
 	diskSize     string
 	vpcID        string
 	subnetID     string
@@ -495,6 +497,20 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 
+	if err := validateDomainConfig("aws", deploy, stderr); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "deploy",
+			AppID:      app.ID,
+			AppVersion: app.Version,
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "invalid_parameters",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+
 	parameters, err := buildAWSDeployParameters(app, deploy)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -566,6 +582,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 
 	fmt.Fprintf(stdout, "Deploying %s to AWS stack %s\n", app.ID, stackName)
+	printDomainDeployHints("aws", deploy, stdout)
 	if keyPair != nil {
 		fmt.Fprintf(stdout, "SSH key pair: %s\n", keyPair.KeyName)
 		fmt.Fprintf(stdout, "SSH private key: %s\n", keyPair.PrivateKeyPath)
@@ -886,6 +903,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.sshKeyPath, "ssh-key-path", "", "private key path for --ssh-key auto")
 	flags.StringVar(&deploy.domainName, "domain", "", "CloudFormation DomainName parameter")
 	flags.StringVar(&deploy.hostedZoneID, "hosted-zone-id", "", "CloudFormation HostedZoneId parameter")
+	flags.StringVar(&deploy.dnsDomainName, "dns-domain", "", "Aliyun DNS root domain for automatic A records (with --domain)")
 	flags.StringVar(&deploy.diskSize, "disk-size", "", "CloudFormation DiskSize parameter")
 	flags.StringVar(&deploy.vpcID, "vpc", "", "CloudFormation VpcId parameter")
 	flags.StringVar(&deploy.vpcID, "vpc-id", "", "CloudFormation VpcId parameter")
@@ -896,6 +914,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.imageID, "image-id", "", "CloudFormation ImageId parameter")
 	flags.StringVar(&deploy.latestAMIID, "latest-ami-id", "", "CloudFormation LatestAmiId parameter")
 	flags.StringVar(&deploy.caddyTlsMode, "caddy-tls-mode", "", "CloudFormation CaddyTlsMode parameter")
+	flags.StringVar(&deploy.caddyEmail, "caddy-email", "", "ACME contact email for Caddy public certificates")
 	flags.StringVar(&deploy.adminPassword, "admin-password", "", "AdminPassword parameter for apps that require it (auto-generated when omitted)")
 	flags.Var(deploy.parameters, "param", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.Var(deploy.parameters, "parameter", "CloudFormation parameter override as Name=Value; may be repeated")
@@ -1203,6 +1222,7 @@ func buildAWSDeployParameters(app *store.App, deploy *deployFlags) (map[string]s
 	setParameter(params, "ImageId", deploy.imageID)
 	setParameter(params, "LatestAmiId", deploy.latestAMIID)
 	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
+	setParameter(params, "CaddyEmail", deploy.caddyEmail)
 	for name, value := range deploy.parameters {
 		params[name] = value
 	}
@@ -1331,26 +1351,14 @@ func validateStackName(name string) error {
 
 func printStackProgress(stdout io.Writer) func(awsdeploy.StackProgressEvent) {
 	return func(event awsdeploy.StackProgressEvent) {
-		timestamp := event.Timestamp.Local().Format("15:04:05")
-		resourceType := strings.TrimSpace(event.ResourceType)
-		resourceID := strings.TrimSpace(event.LogicalResourceID)
-		status := strings.TrimSpace(event.ResourceStatus)
-
-		if resourceType == "" {
-			resourceType = "-"
-		}
-		if resourceID == "" {
-			resourceID = "-"
-		}
-		if status == "" {
-			status = "-"
-		}
-
-		fmt.Fprintf(stdout, "[%s] %s %s %s", timestamp, resourceType, resourceID, status)
-		if reason := strings.TrimSpace(event.ResourceStatusReason); reason != "" {
-			fmt.Fprintf(stdout, " - %s", reason)
-		}
-		fmt.Fprintln(stdout)
+		printStackProgressLine(stdout, stackProgressLine{
+			Timestamp:            event.Timestamp,
+			ResourceType:         event.ResourceType,
+			LogicalResourceID:    event.LogicalResourceID,
+			ResourceStatus:       event.ResourceStatus,
+			ResourceStatusReason: event.ResourceStatusReason,
+			PublicIP:             event.PublicIP,
+		})
 	}
 }
 
