@@ -141,7 +141,7 @@ Flags:
   --vpc, --vpc-id <id>         VpcId parameter
   --subnet, --subnet-id <id>   SubnetId parameter (AWS)
   --vswitch-id <id>            VSwitchId parameter (Aliyun; auto-discovered when omitted)
-  --image-id <id>              ImageId / LatestAmiId override
+  --image-id <id>              ImageId override (Aliyun) or LatestAmiId alias (AWS)
   --latest-ami-id <ami>        LatestAmiId parameter override (AWS)
   --caddy-tls-mode <mode>      CaddyTlsMode parameter (auto, ip-letsencrypt, http, internal)
   --caddy-email <email>        ACME contact email for Caddy public certificates

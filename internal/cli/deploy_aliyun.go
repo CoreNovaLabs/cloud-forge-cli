@@ -177,7 +177,8 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
-	if err := validateDomainConfig("aliyun", deploy, stderr); err != nil {
+	parameters, err := buildAliyunDeployParameters(app, deploy)
+	if err != nil {
 		track(common, ctx, telemetry.Event{
 			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
 			Status: "failed", DurationMS: durationMS(started), ErrorCode: "invalid_parameters",
@@ -186,8 +187,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
-	parameters, err := buildAliyunDeployParameters(app, deploy)
-	if err != nil {
+	if err := validateDomainParameters("aliyun", parameters, stderr); err != nil {
 		track(common, ctx, telemetry.Event{
 			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
 			Status: "failed", DurationMS: durationMS(started), ErrorCode: "invalid_parameters",
@@ -249,7 +249,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		Status: "success", DurationMS: durationMS(started),
 	})
 
-	waitReady := deploy.waitReady && !deploy.noWaitReady
+	waitReady := shouldWaitForServiceReady("aliyun", deploy, flagWasSet(flags, "wait-ready"), parameters)
 	if !deploy.dryRun && !deploy.noWait && waitReady {
 		deadline := started.Add(deploy.timeout)
 		showProgress := deploy.progress == "plain"
@@ -260,7 +260,11 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 			return 1
 		}
 	} else if !deploy.dryRun && !deploy.noWait {
-		fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take 8-15 minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+		if manualDomainDNS("aliyun", parameters) && !flagWasSet(flags, "wait-ready") {
+			printManualDomainDNSWaitSkipped("aliyun", parameters, result.Outputs, stdout)
+		} else {
+			fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take 8-15 minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+		}
 	}
 
 	printAliyunDeployResult(stdout, result)
@@ -327,15 +331,11 @@ func buildAliyunDeployParameters(app *store.App, deploy *deployFlags) (map[strin
 	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
 	setParameter(params, "CaddyEmail", deploy.caddyEmail)
 	setParameter(params, "DnsDomainName", deploy.dnsDomainName)
-	if deploy.domainName != "" && deploy.dnsDomainName != "" {
-		if rr, err := resolveDnsRR(deploy.domainName, deploy.dnsDomainName); err != nil {
-			return nil, err
-		} else {
-			params["DnsRR"] = rr
-		}
-	}
 	for name, value := range deploy.parameters {
 		params[name] = value
+	}
+	if err := normalizeAliyunDNSParams(params); err != nil {
+		return nil, err
 	}
 
 	if err := validateRequiredParams(app.Params, params, "aliyun"); err != nil {
@@ -345,6 +345,23 @@ func buildAliyunDeployParameters(app *store.App, deploy *deployFlags) (map[strin
 		return nil, err
 	}
 	return params, nil
+}
+
+func normalizeAliyunDNSParams(params map[string]string) error {
+	domain := strings.TrimSpace(params["DomainName"])
+	dnsDomain := strings.TrimSpace(params["DnsDomainName"])
+	if domain == "" || dnsDomain == "" {
+		return nil
+	}
+	rr, err := resolveDnsRR(domain, dnsDomain)
+	if err != nil {
+		return err
+	}
+	if existing := strings.TrimSpace(params["DnsRR"]); existing != "" && existing != rr {
+		return fmt.Errorf("DnsRR %q does not match --domain %q under --dns-domain %q; expected %q", existing, domain, dnsDomain, rr)
+	}
+	params["DnsRR"] = rr
+	return nil
 }
 
 func applyAliyunRegionDefaults(flags *flag.FlagSet, region *string) {

@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloud-forge/cli/internal/awsdeploy"
 	"github.com/cloud-forge/cli/internal/aliyundeploy"
+	"github.com/cloud-forge/cli/internal/awsdeploy"
 )
 
 func TestSearchUsesLocalCatalog(t *testing.T) {
@@ -283,6 +283,106 @@ func TestDeployAWSUsesCatalogTemplateAndParameters(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Stack name:  test-gitea") {
 		t.Fatalf("expected deploy output to include stack name, got: %s", stdout.String())
+	}
+}
+
+func TestDeployAWSImageIDAliasesLatestAMI(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	var gotInput awsdeploy.DeployInput
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		return fakeAWSDeployer{input: &gotInput}, nil
+	}
+	t.Cleanup(func() {
+		newAWSDeployer = oldNewAWSDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"--dry-run",
+		"gitea",
+		"--cloud",
+		"aws",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--image-id",
+		"ami-0abc123def4567890",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	if gotInput.Parameters["LatestAmiId"] != "ami-0abc123def4567890" {
+		t.Fatalf("LatestAmiId = %q", gotInput.Parameters["LatestAmiId"])
+	}
+	if _, ok := gotInput.Parameters["ImageId"]; ok {
+		t.Fatalf("did not expect AWS ImageId parameter, got %#v", gotInput.Parameters)
+	}
+}
+
+func TestDeployAWSManualDomainDNSSkipsReadyWaitByDefault(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	var gotInput awsdeploy.DeployInput
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		return fakeAWSDeployer{
+			input: &gotInput,
+			output: &awsdeploy.DeployOutput{
+				Action:    "created",
+				Region:    "us-east-1",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-gitea",
+				Status:    "CREATE_COMPLETE",
+				Outputs: map[string]string{
+					"DomainName": "git.example.com",
+					"PublicIP":   "203.0.113.10",
+					"ServiceURL": "http://127.0.0.1:1",
+				},
+			},
+		}, nil
+	}
+	t.Cleanup(func() {
+		newAWSDeployer = oldNewAWSDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"gitea",
+		"--cloud",
+		"aws",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--ssh-key",
+		"none",
+		"--domain",
+		"git.example.com",
+		"--timeout",
+		"50ms",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s stdout: %s", code, stderr.String(), stdout.String())
+	}
+	if !gotInput.Wait {
+		t.Fatal("expected stack wait to remain enabled")
+	}
+	if !strings.Contains(stdout.String(), "skipped the default endpoint wait") {
+		t.Fatalf("expected manual DNS wait skip note, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("did not expect service ready wait, got: %s", stdout.String())
 	}
 }
 
@@ -714,6 +814,70 @@ func TestDeployAliyunUsesCatalogTemplateAndParameters(t *testing.T) {
 	}
 	if !gotInput.DryRun {
 		t.Fatal("expected dry-run deploy")
+	}
+}
+
+func TestDeployAliyunManualDomainDNSSkipsReadyWaitByDefault(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	var gotInput aliyundeploy.DeployInput
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		return fakeAliyunDeployer{
+			input: &gotInput,
+			output: &aliyundeploy.DeployOutput{
+				Action:    "created",
+				Region:    "cn-hongkong",
+				AccountID: "123456789012",
+				StackName: "cloud-forge-hello-nginx",
+				Status:    "CREATE_COMPLETE",
+				Outputs: map[string]string{
+					"DomainName": "git.example.com",
+					"PublicIP":   "203.0.113.10",
+					"ServiceURL": "http://127.0.0.1:1",
+				},
+			},
+		}, nil
+	}
+	t.Cleanup(func() {
+		newAliyunDeployer = oldNewAliyunDeployer
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+		"--vpc-id",
+		"vpc-test",
+		"--vswitch-id",
+		"vsw-test",
+		"--key",
+		"my-key",
+		"--domain",
+		"git.example.com",
+		"--timeout",
+		"50ms",
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s stdout: %s", code, stderr.String(), stdout.String())
+	}
+	if !gotInput.Wait {
+		t.Fatal("expected stack wait to remain enabled")
+	}
+	if !strings.Contains(stdout.String(), "skipped the default endpoint wait") {
+		t.Fatalf("expected manual DNS wait skip note, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Service is ready.") {
+		t.Fatalf("did not expect service ready wait, got: %s", stdout.String())
 	}
 }
 

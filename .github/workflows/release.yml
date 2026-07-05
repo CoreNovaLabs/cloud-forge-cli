@@ -74,8 +74,8 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           awk -v ver="$version" '
-            $0 ~ "^## \\[" ver "\\]" { found=1; next }
-            found && /^## \[/ { exit }
+            index($0, "## [" ver "]") == 1 { found=1; next }
+            found && index($0, "## [") == 1 { exit }
             found { print }
           ' CHANGELOG.md > release-notes.md
           if [[ ! -s release-notes.md ]]; then

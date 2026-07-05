@@ -80,6 +80,49 @@ func TestValidateDomainConfigAliyun(t *testing.T) {
 	}
 }
 
+func TestValidateDomainConfigRejectsCrossCloudDNSFlags(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	if err := validateDomainConfig("aws", &deployFlags{
+		domainName:    "git.example.com",
+		dnsDomainName: "example.com",
+	}, &stderr); err == nil || !strings.Contains(err.Error(), "--dns-domain") {
+		t.Fatalf("expected aws to reject --dns-domain, got %v", err)
+	}
+
+	if err := validateDomainConfig("aliyun", &deployFlags{
+		domainName:   "git.example.com",
+		hostedZoneID: "Z123",
+	}, &stderr); err == nil || !strings.Contains(err.Error(), "--hosted-zone-id") {
+		t.Fatalf("expected aliyun to reject --hosted-zone-id, got %v", err)
+	}
+}
+
+func TestValidateDomainConfigUsesParamOverrides(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	deploy := &deployFlags{
+		parameters: keyValueFlag{
+			"DomainName": "https://git.example.com",
+		},
+	}
+	if err := validateDomainConfig("aws", deploy, &stderr); err == nil || !strings.Contains(err.Error(), "URL scheme") {
+		t.Fatalf("expected invalid DomainName override, got %v", err)
+	}
+
+	deploy = &deployFlags{
+		parameters: keyValueFlag{
+			"DomainName":    "git.example.com",
+			"DnsDomainName": "example.com",
+		},
+	}
+	if err := validateDomainConfig("aws", deploy, &stderr); err == nil || !strings.Contains(err.Error(), "--dns-domain") {
+		t.Fatalf("expected aws to reject DnsDomainName override, got %v", err)
+	}
+}
+
 func TestBuildAliyunDeployParametersDomain(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +164,37 @@ func TestBuildAliyunDeployParametersDomain(t *testing.T) {
 	}
 	if params["CaddyEmail"] != "ops@example.com" {
 		t.Fatalf("CaddyEmail = %q", params["CaddyEmail"])
+	}
+}
+
+func TestBuildAliyunDeployParametersDomainParamOverrides(t *testing.T) {
+	t.Parallel()
+
+	app := &store.App{
+		Params: map[string]store.ParamDefinition{
+			"DomainName":    {Type: "string", Default: ""},
+			"DnsDomainName": {Type: "string", Aliyun: &store.CloudParam{Default: ""}},
+			"DnsRR":         {Type: "string", Aliyun: &store.CloudParam{Default: ""}},
+			"KeyPairName":   {Type: "string", Aliyun: &store.CloudParam{Required: true}},
+			"VpcId":         {Type: "string", Aliyun: &store.CloudParam{Required: true}},
+			"VSwitchId":     {Type: "string", Aliyun: &store.CloudParam{Required: true}},
+		},
+	}
+	deploy := &deployFlags{
+		keyName:   "test-key",
+		vpcID:     "vpc-test",
+		vswitchID: "vsw-test",
+		parameters: keyValueFlag{
+			"DomainName":    "git.example.com",
+			"DnsDomainName": "example.com",
+		},
+	}
+	params, err := buildAliyunDeployParameters(app, deploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params["DnsRR"] != "git" {
+		t.Fatalf("DnsRR = %q", params["DnsRR"])
 	}
 }
 

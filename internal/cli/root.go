@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloud-forge/cli/internal/aliyunauth"
 	"github.com/cloud-forge/cli/internal/awsauth"
 	"github.com/cloud-forge/cli/internal/awsdeploy"
-	"github.com/cloud-forge/cli/internal/aliyunauth"
 	"github.com/cloud-forge/cli/internal/telemetry"
 	"github.com/cloud-forge/cli/pkg/store"
 )
@@ -22,8 +22,8 @@ import (
 var Version = "0.3.2"
 
 const (
-	defaultAWSRegion    = "us-east-1"
-	defaultAliyunRegion = "cn-hongkong"
+	defaultAWSRegion        = "us-east-1"
+	defaultAliyunRegion     = "cn-hongkong"
 	defaultCatalogBaseURL   = "https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main"
 	fallbackCatalogBaseURL  = "https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-catalog/main"
 	defaultStoreURL         = defaultCatalogBaseURL + "/index/apps.json"
@@ -45,33 +45,33 @@ type listFlag []string
 type keyValueFlag map[string]string
 
 type deployFlags struct {
-	region       string
-	profile      string
-	stackName    string
-	instanceType string
-	keyName      string
-	sshKey       string
-	sshKeyPath   string
-	domainName   string
-	hostedZoneID string
+	region        string
+	profile       string
+	stackName     string
+	instanceType  string
+	keyName       string
+	sshKey        string
+	sshKeyPath    string
+	domainName    string
+	hostedZoneID  string
 	dnsDomainName string
-	caddyEmail   string
-	diskSize     string
-	vpcID        string
-	subnetID     string
-	vswitchID    string
-	allowedIP    string
-	imageID      string
-	latestAMIID  string
-	caddyTlsMode string
+	caddyEmail    string
+	diskSize      string
+	vpcID         string
+	subnetID      string
+	vswitchID     string
+	allowedIP     string
+	imageID       string
+	latestAMIID   string
+	caddyTlsMode  string
 	adminPassword string
-	parameters   keyValueFlag
-	dryRun       bool
-	noWait       bool
-	waitReady    bool
-	noWaitReady  bool
-	timeout      time.Duration
-	progress     string
+	parameters    keyValueFlag
+	dryRun        bool
+	noWait        bool
+	waitReady     bool
+	noWaitReady   bool
+	timeout       time.Duration
+	progress      string
 }
 
 type deleteFlags struct {
@@ -497,7 +497,8 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 
-	if err := validateDomainConfig("aws", deploy, stderr); err != nil {
+	parameters, err := buildAWSDeployParameters(app, deploy)
+	if err != nil {
 		track(common, ctx, telemetry.Event{
 			Event:      "deploy",
 			AppID:      app.ID,
@@ -511,8 +512,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 
-	parameters, err := buildAWSDeployParameters(app, deploy)
-	if err != nil {
+	if err := validateDomainParameters("aws", parameters, stderr); err != nil {
 		track(common, ctx, telemetry.Event{
 			Event:      "deploy",
 			AppID:      app.ID,
@@ -630,7 +630,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		DurationMS: durationMS(started),
 	})
 
-	waitReady := deploy.waitReady && !deploy.noWaitReady
+	waitReady := shouldWaitForServiceReady("aws", deploy, flagWasSet(flags, "wait-ready"), parameters)
 	if !deploy.dryRun && !deploy.noWait && waitReady {
 		deadline := started.Add(deploy.timeout)
 		showProgress := deploy.progress == "plain"
@@ -641,7 +641,11 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			return 1
 		}
 	} else if !deploy.dryRun && !deploy.noWait {
-		fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take a few minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+		if manualDomainDNS("aws", parameters) && !flagWasSet(flags, "wait-ready") {
+			printManualDomainDNSWaitSkipped("aws", parameters, result.Outputs, stdout)
+		} else {
+			fmt.Fprintln(stdout, "\nNote: Stack is ready; app bootstrap may still take a few minutes (pass --wait-ready or omit --no-wait-ready to wait).")
+		}
 	}
 
 	printDeployResult(stdout, result)
@@ -911,7 +915,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.subnetID, "subnet-id", "", "CloudFormation SubnetId parameter")
 	flags.StringVar(&deploy.vswitchID, "vswitch-id", "", "ROS VSwitchId parameter (aliyun)")
 	flags.StringVar(&deploy.allowedIP, "allowed-ip", "", "CloudFormation AllowedIP parameter")
-	flags.StringVar(&deploy.imageID, "image-id", "", "CloudFormation ImageId parameter")
+	flags.StringVar(&deploy.imageID, "image-id", "", "ImageId parameter (Aliyun) or LatestAmiId alias (AWS)")
 	flags.StringVar(&deploy.latestAMIID, "latest-ami-id", "", "CloudFormation LatestAmiId parameter")
 	flags.StringVar(&deploy.caddyTlsMode, "caddy-tls-mode", "", "CloudFormation CaddyTlsMode parameter")
 	flags.StringVar(&deploy.caddyEmail, "caddy-email", "", "ACME contact email for Caddy public certificates")
@@ -1219,8 +1223,11 @@ func buildAWSDeployParameters(app *store.App, deploy *deployFlags) (map[string]s
 	setParameter(params, "VpcId", deploy.vpcID)
 	setParameter(params, "SubnetId", deploy.subnetID)
 	setParameter(params, "AllowedIP", deploy.allowedIP)
-	setParameter(params, "ImageId", deploy.imageID)
-	setParameter(params, "LatestAmiId", deploy.latestAMIID)
+	latestAMIID := deploy.latestAMIID
+	if latestAMIID == "" {
+		latestAMIID = deploy.imageID
+	}
+	setParameter(params, "LatestAmiId", latestAMIID)
 	setParameter(params, "CaddyTlsMode", deploy.caddyTlsMode)
 	setParameter(params, "CaddyEmail", deploy.caddyEmail)
 	for name, value := range deploy.parameters {

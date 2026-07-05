@@ -59,6 +59,15 @@ func TestServiceReady(t *testing.T) {
 	}
 }
 
+func TestServiceHTTPClientForURL(t *testing.T) {
+	if serviceHTTPClientForURL("https://203.0.113.10/health") != insecureIPServiceHTTPClient {
+		t.Fatal("expected IP HTTPS endpoint to use insecure IP client")
+	}
+	if serviceHTTPClientForURL("https://git.example.com/health") != serviceHTTPClient {
+		t.Fatal("expected DNS endpoint to use normal TLS client")
+	}
+}
+
 func TestWaitServiceReady(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

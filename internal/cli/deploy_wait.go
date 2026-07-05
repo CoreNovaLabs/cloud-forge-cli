@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -15,10 +17,13 @@ import (
 // Tests may shorten it to speed up assertions.
 var bootstrapPollInterval = 30 * time.Second
 
-// serviceHTTPClient probes the deployed endpoint. TLS verification is skipped
-// because the endpoint is typically an IP address carrying an IP-based
-// certificate that does not match a hostname.
 var serviceHTTPClient = &http.Client{
+	Timeout: 15 * time.Second,
+}
+
+// insecureIPServiceHTTPClient probes IP-address HTTPS endpoints. Domain
+// endpoints use normal certificate verification.
+var insecureIPServiceHTTPClient = &http.Client{
 	Timeout: 15 * time.Second,
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // IP certs may not match hostname
@@ -50,12 +55,23 @@ func serviceReady(ctx context.Context, url string) bool {
 	if err != nil {
 		return false
 	}
-	resp, err := serviceHTTPClient.Do(req)
+	resp, err := serviceHTTPClientForURL(url).Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func serviceHTTPClientForURL(rawURL string) *http.Client {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return serviceHTTPClient
+	}
+	if net.ParseIP(parsed.Hostname()) != nil {
+		return insecureIPServiceHTTPClient
+	}
+	return serviceHTTPClient
 }
 
 // waitServiceReady polls the deployed endpoint until it responds 2xx or the
