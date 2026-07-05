@@ -5,70 +5,60 @@
 <h1 align="center">Cloud Forge CLI</h1>
 
 <p align="center">
-  Turn open-source apps into one-command cloud deployments. The current AWS path uses CloudFormation, hardened AMIs, and guided credential setup.
+  Turn open-source apps into one-command cloud deployments. Supports AWS (CloudFormation + hardened AMIs) and Aliyun Hong Kong (ROS), with guided credential setup.
 </p>
 
 <p align="center">
   <a href="README.zh-CN.md">中文文档</a>
   ·
+  <a href="#install">Install</a>
+  ·
   <a href="#quick-start">Quick Start</a>
   ·
-  <a href="#aws-credentials">AWS Credentials</a>
+  <a href="#aws-deploy">AWS Deploy</a>
   ·
-  <a href="#cleanup">Cleanup</a>
+  <a href="#aliyun-deploy-hong-kong">Aliyun Deploy</a>
+  ·
+  <a href="#command-reference">Command Reference</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml"><img alt="Test CLI" src="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml/badge.svg" /></a>
+  <img alt="AWS" src="https://img.shields.io/badge/AWS-deploy%20%7C%20delete-ff9900" />
+  <img alt="Aliyun" src="https://img.shields.io/badge/Aliyun-deploy%20%7C%20delete-0089FF" />
   <a href="https://github.com/CoreNovaLabs/cloud-forge-cli/releases"><img alt="Release" src="https://img.shields.io/github/v/release/CoreNovaLabs/cloud-forge-cli?sort=semver" /></a>
+  <a href="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml"><img alt="Test CLI" src="https://github.com/CoreNovaLabs/cloud-forge-cli/actions/workflows/test.yml/badge.svg" /></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" /></a>
   <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/CoreNovaLabs/cloud-forge-cli" /></a>
-  <img alt="AWS" src="https://img.shields.io/badge/AWS-deploy%20%7C%20delete-ff9900" />
 </p>
 
 ```bash
 curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
 cloud-forge auth aws
-cloud-forge deploy hello-nginx --cloud aws --allowed-ip <YOUR_IP>/32
+cloud-forge deploy hello-nginx --cloud aws
 ```
 
-Cloud Forge is building a catalog of open-source apps that can be deployed with a single command. Cloud Forge CLI is the command-line entry point for that catalog: use it to find apps, inspect templates, deploy AWS CloudFormation stacks, and remove the stacks when you are done.
+Cloud Forge CLI is the command-line entry point for the [Cloud Forge Catalog](https://github.com/CoreNovaLabs/cloud-forge-catalog): find apps, inspect templates, deploy stacks on AWS or Aliyun, and remove them when you are done.
 
 | Capability | What it does |
 | --- | --- |
-| Catalog search | Browse the growing app catalog, including `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. |
+| Catalog search | Browse apps with `search` / `show`; parameters and cloud support come from each manifest. |
 | AWS deploy | Create or update CloudFormation stacks and follow progress in the terminal. |
-| Built-in auth | Sign in through a browser or configure access keys without installing the AWS CLI. |
-| Cleanup | Delete CloudFormation stacks and release the AWS resources they created. |
+| Aliyun deploy | Deploy to Hong Kong (`cn-hongkong`) via ROS with ECS + EIP and container bootstrap. |
+| Built-in auth | AWS browser sign-in or access keys; Aliyun AccessKey setup. |
+| Cleanup | Delete Cloud Forge stacks and release associated cloud resources. |
 
-**Current status:** AWS and Aliyun (`cn-hongkong`) deploy and delete are available for `hello-nginx`, `gitea`, `n8n`, and `uptime-kuma`. Aliyun v1 uses public OS images with UserData bootstrap; first boot may take 8–15 minutes.
+**Catalog notes**
 
-## What It Does
+- Index: [cloud-forge-catalog/index/apps.json](https://github.com/CoreNovaLabs/cloud-forge-catalog/blob/main/index/apps.json)
+- Any app with `aws` or `aliyun` in `clouds` can be deployed; run `cloud-forge show <app>` for parameters
+- `certified` apps have fuller cloud verification; `community` apps iterate faster
+- Aliyun v1 uses public OS images with UserData bootstrap; first boot may take 8–15 minutes
 
-Cloud Forge CLI turns catalog entries into a repeatable deployment workflow. The long-term goal is a broad open-source app catalog; the current CLI focuses on AWS deployment first.
-
-For AWS, it can:
-
-- search the catalog
-- show app metadata
-- render the CloudFormation template for an app
-- create or update a CloudFormation stack
-- delete a CloudFormation stack
-- show CloudFormation resource progress during deploy and delete
-- reuse a local SSH key for EC2 access
-- print outputs such as service URL, public IP, instance ID, AMI ID, and region when the template provides them
-
-AWS deploys default to `us-east-1`.
+Default regions: AWS `us-east-1`, Aliyun `cn-hongkong`.
 
 ## Install
 
-Recommended one-line install:
-
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
-```
-
-The installer puts `cloud-forge` in `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
+The one-liner above installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
 
 If the CDN is unavailable in your network, use the GitHub raw URL instead:
 
@@ -76,202 +66,141 @@ If the CDN is unavailable in your network, use the GitHub raw URL instead:
 curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
 ```
 
-Manual install from GitHub Releases:
+Manual install from [GitHub Releases](https://github.com/CoreNovaLabs/cloud-forge-cli/releases): unpack the archive and move the binary to a directory on your `PATH`.
 
-```text
-https://github.com/CoreNovaLabs/cloud-forge-cli/releases
-```
-
-Unpack the archive and move the `cloud-forge` binary to a directory on your `PATH`.
-
-Verify the install:
+Verify:
 
 ```bash
 cloud-forge version
 ```
 
-You can also build from source. See [Build From Source](#build-from-source).
+See [Build From Source](#build-from-source) to compile locally.
 
 ## AWS Credentials
 
-Cloud Forge CLI calls AWS through the AWS SDK for Go v2. It also includes a browser-based AWS sign-in flow, so the CLI can set up credentials without shelling out to the AWS CLI.
-
-You do not need to install the AWS CLI, but you do need an AWS identity or access keys.
-
-Use the built-in AWS browser sign-in:
+Cloud Forge CLI calls AWS through the AWS SDK for Go v2. It includes a browser-based sign-in flow, so you do not need the AWS CLI installed—but you do need an AWS identity or access keys.
 
 ```bash
 cloud-forge auth aws
-```
-
-By default, `cloud-forge auth aws` opens an AWS sign-in page. After authorization, it writes a local profile with temporary credentials. This flow uses AWS Sign-In OAuth with PKCE inside Cloud Forge and does not require the AWS CLI.
-
-If the browser does not open, the CLI prints a sign-in URL that you can copy into a browser. Use `--no-browser` when you want to print the URL and paste the authorization code manually.
-
-If `AWS_PROFILE` is set, the auth command uses that profile by default. Use `--profile NAME` to check or write a specific profile.
-
-Check current auth status:
-
-```bash
 cloud-forge auth aws status
 ```
 
-The status output shows the AWS account, ARN, region, profile, and the credential source selected by the AWS SDK.
+By default, `cloud-forge auth aws` opens an AWS sign-in page and writes temporary credentials to a local profile (AWS Sign-In OAuth with PKCE). Use `--no-browser` to print the URL and paste the authorization code manually. Use `--profile NAME` to target a specific profile.
 
-Supported credential sources include:
-
-- `~/.aws/credentials`
-- `~/.aws/config`
-- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-- `AWS_PROFILE`
-- AWS SSO or assume-role profiles supported by the AWS SDK
-- EC2/ECS instance or task roles
-
-Use an AWS profile:
+Other supported credential sources: `~/.aws/credentials`, `~/.aws/config`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, AWS SSO or assume-role profiles, and EC2/ECS instance or task roles.
 
 ```bash
 export AWS_PROFILE=default
-```
-
-Use environment variables:
-
-```bash
+# or
 export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
 ```
 
-AWS deploys default to `us-east-1`. Override it when needed:
+Override the default deploy region when needed:
 
 ```bash
 cloud-forge deploy hello-nginx --cloud aws --region us-west-2
 ```
 
-For production use, prefer a least-privilege IAM user or role. Avoid using AWS account root credentials.
-
-Browser sign-in is the default; this explicit form is equivalent:
+Auth method variants:
 
 ```bash
-cloud-forge auth aws --method browser
-```
-
-Print the sign-in URL without opening a browser:
-
-```bash
+cloud-forge auth aws --method browser          # default
 cloud-forge auth aws --method browser --no-browser
-```
-
-Force manual access key configuration:
-
-```bash
 cloud-forge auth aws --method access-key
 ```
 
-## Quick Start
+For production use, prefer a least-privilege IAM user or role. Avoid AWS account root credentials.
 
-Find an app:
+## Quick Start
 
 ```bash
 cloud-forge search nginx --cloud aws
-```
-
-Show app details:
-
-```bash
 cloud-forge show hello-nginx
-```
-
-Preview the AWS template:
-
-```bash
 cloud-forge template hello-nginx --cloud aws
+cloud-forge deploy hello-nginx --cloud aws --dry-run
+cloud-forge deploy hello-nginx --cloud aws
 ```
 
-Validate the deployment without creating resources:
+Without `--allowed-ip`, SSH defaults to `0.0.0.0/0` and the CLI prints a security warning. Restrict access with `--allowed-ip <your-ip>/32` when needed.
+
+When the stack finishes, the CLI prints outputs and a cleanup hint:
+
+```text
+To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+```
+
+For Aliyun, see [Aliyun Deploy (Hong Kong)](#aliyun-deploy-hong-kong).
+
+## Cleanup
 
 ```bash
-cloud-forge deploy hello-nginx --cloud aws --dry-run
+cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+cloud-forge delete cloud-forge-<app-id> --cloud aws --wait      # default: wait for completion
+cloud-forge delete cloud-forge-<app-id> --cloud aws --no-wait   # return immediately
 ```
 
-Deploy to AWS:
+Deleting the stack removes the EC2 instance, Elastic IP, security group, and related resources created by the template.
+
+## AWS Deploy
+
+AWS deployment uses the AWS SDK for Go v2 and CloudFormation—not the AWS CLI underneath. Credentials come from the standard AWS SDK chain. Default region is `us-east-1` (`--region` to override).
+
+Create or update a stack:
 
 ```bash
 cloud-forge deploy hello-nginx --cloud aws \
   --stack-name cloud-forge-hello-nginx \
-  --instance-type t3.micro \
-  --allowed-ip 1.2.3.4/32
+  --instance-type t3.micro
 ```
 
-During deployment, the CLI prints CloudFormation progress:
+By default, deploy prints CloudFormation resource events:
 
 ```text
 [12:01:08] AWS::EC2::SecurityGroup HelloSecurityGroup CREATE_COMPLETE
 [12:01:15] AWS::EC2::Instance HelloInstance CREATE_IN_PROGRESS
 ```
 
-When the stack finishes, the CLI prints the template outputs and a cleanup command:
-
-```text
-To remove later: cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+```bash
+cloud-forge deploy hello-nginx --cloud aws --progress none   # disable progress lines
 ```
 
-## Cleanup
+After `CREATE_COMPLETE`, `deploy` polls `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached. First boot still pulls images and obtains TLS, so this bridges stack completion and a reachable endpoint. Pass `--no-wait-ready` to return right after the stack is created.
 
-Delete a stack created by Cloud Forge:
+### SSH Key Behavior
+
+By default, AWS deploys use a reusable local key at `~/.cloud-forge/keys/aws/cloud-forge-default.pem`. On first use the CLI creates it with `0600` permissions and imports the public key into EC2 as `cloud-forge-default` when missing in the target region. The same local key is reused across regions. Deleting a stack does not remove this file.
 
 ```bash
-cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
+cloud-forge deploy hello-nginx --cloud aws --key-name my-key
+cloud-forge deploy hello-nginx --cloud aws --ssh-key none
+cloud-forge deploy hello-nginx --cloud aws --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
 ```
 
-Wait for deletion to finish (default):
+## Aliyun Deploy (Hong Kong)
+
+Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
+
+Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
 
 ```bash
-cloud-forge delete cloud-forge-gitea --cloud aws --wait
+cloud-forge auth aliyun
+cloud-forge auth aliyun status
+
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
+  --vpc-id vpc-xxx \
+  --vswitch-id vsw-xxx \
+  --key my-key \
+  --timeout 20m
+
+# Stack only — do not wait for bootstrap
+cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
+  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --no-wait-ready
+
+cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```
 
-Start deletion without waiting:
-
-```bash
-cloud-forge delete cloud-forge-n8n --cloud aws --no-wait
-```
-
-Deleting the stack removes the EC2 instance, Elastic IP, security group, and related resources created by the template.
-
-The reusable local private key stays on disk:
-
-```text
-~/.cloud-forge/keys/aws/cloud-forge-default.pem
-```
-
-## SSH Key Behavior
-
-By default, AWS deploys use a reusable local SSH key:
-
-```text
-~/.cloud-forge/keys/aws/cloud-forge-default.pem
-```
-
-On first use, the CLI creates this private key with `0600` permissions. If the target AWS region does not already have a `cloud-forge-default` key pair, the CLI imports the matching public key into EC2. The same local private key is reused across regions.
-
-Use an existing EC2 key pair instead:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --key-name my-key
-```
-
-Disable SSH key injection:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --ssh-key none
-```
-
-Use a custom local private key path:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --ssh-key-path ~/.cloud-forge/keys/aws/custom.pem
-```
+After ROS `CREATE_COMPLETE`, `deploy` polls `ServiceURL` the same way as AWS. Pass `--no-wait-ready` to skip app readiness waiting. Container images use Docker Hub short names (reachable from Hong Kong ECS without ACR).
 
 ## Common Options
 
@@ -284,35 +213,43 @@ cloud-forge deploy hello-nginx --cloud aws \
   --progress plain
 ```
 
-Disable progress output:
+Template parameters can use dedicated flags or repeated `--param`:
 
 ```bash
 cloud-forge deploy hello-nginx --cloud aws \
-  --progress none
+  --param KeyName=my-key \
+  --param InstanceType=t3.micro
 ```
 
-Template parameters can be supplied with dedicated flags or repeated `--param` flags:
+Common deploy flags (each app may expose more—run `cloud-forge show <app>`):
+
+- **Instance:** `--instance-type`, `--disk-size`, `--image-id`, `--latest-ami-id`
+- **Network:** `--vpc` / `--vpc-id`, `--subnet` / `--subnet-id`, `--vswitch-id`, `--allowed-ip`
+- **SSH / keys:** `--key` / `--key-name`, `--ssh-key`, `--ssh-key-path`
+- **DNS / TLS:** `--domain`, `--hosted-zone-id`, `--caddy-tls-mode`
+- **Other:** `--progress`, `--admin-password`
+
+## Admin Password
+
+Some apps (for example `code-server`, `minio`) require an admin password. `cloud-forge show <app>` lists `AdminPassword optional secret` when applicable.
 
 ```bash
-cloud-forge deploy gitea --cloud aws \
-  --region us-east-1 \
-  --param KeyName=my-key \
-  --param ImageId=ami-0123456789abcdef0
+cloud-forge deploy minio --cloud aws --admin-password 'MyStr0ngPass'
+# or
+cloud-forge deploy minio --cloud aws --param AdminPassword='MyStr0ngPass'
 ```
 
-Dedicated AWS parameter flags include `--instance-type`, `--key`, `--key-name`, `--ssh-key`, `--ssh-key-path`, `--progress`, `--domain`, `--hosted-zone-id`, `--disk-size`, `--vpc`, `--subnet`, `--allowed-ip`, `--image-id`, `--latest-ami-id`, and `--caddy-tls-mode`.
+If omitted, the CLI generates a random 24-character password, passes it into IaC parameters, and **prints it once after a successful deploy** (`--dry-run` only notes that a password will be generated). Passwords are not written to stack outputs or telemetry.
 
 ## Catalog Reference
-
-By default, the CLI reads the catalog index from:
 
 ```text
 https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-catalog@main/index/apps.json
 ```
 
-If the default mirror is unavailable, it falls back to the GitHub raw catalog URL.
+If the default CDN mirror is unavailable, the CLI falls back to the GitHub raw catalog URL.
 
-For local development:
+Local development:
 
 ```bash
 export CLOUD_FORGE_STORE_URL="file:///absolute/path/to/cloud-forge-catalog/index/apps.json"
@@ -322,107 +259,25 @@ export CLOUD_FORGE_STORE_URL="file:///absolute/path/to/cloud-forge-catalog/index
 
 ```bash
 cloud-forge search hello --cloud aws
-cloud-forge auth aws status
 cloud-forge show hello-nginx
 cloud-forge template hello-nginx --cloud aws
 cloud-forge deploy hello-nginx --cloud aws --dry-run
 cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
   --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --dry-run
+cloud-forge auth aws status
+cloud-forge auth aliyun status
+cloud-forge delete cloud-forge-hello-nginx --cloud aws --region us-east-1
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 cloud-forge help deploy
 ```
 
-Aliyun v1 supports **`cn-hongkong` only**. Configure AccessKey credentials with `cloud-forge auth aliyun` before deploy.
-
-## AWS Deploy
-
-AWS deployment uses the AWS SDK for Go v2 and CloudFormation. It does not call the AWS CLI underneath.
-
-Credentials are loaded from the standard AWS SDK credential chain. AWS deploys default to `us-east-1`; override with `--region` when needed.
-
-```bash
-export AWS_PROFILE=default
-```
-
-Validate a template without creating resources:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws --dry-run
-```
-
-Create or update a stack:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --stack-name cloud-forge-hello-nginx \
-  --instance-type t3.micro \
-  --allowed-ip 1.2.3.4/32
-```
-
-By default, deploy waits print CloudFormation resource events as plain progress lines:
-
-```text
-[12:01:08] AWS::EC2::SecurityGroup HelloSecurityGroup CREATE_COMPLETE
-[12:01:15] AWS::EC2::Instance HelloInstance CREATE_IN_PROGRESS
-```
-
-Disable progress output:
-
-```bash
-cloud-forge deploy hello-nginx --cloud aws \
-  --progress none
-```
-
-After the stack reaches `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached. The first boot still needs to pull images and obtain a TLS certificate, so this bridges the gap between stack completion and a reachable endpoint. Pass `--no-wait-ready` to return right after the stack is created.
-
-## Aliyun deploy (Hong Kong)
-
-Aliyun v1 uses ROS to create ECS + EIP, then bootstraps Docker/Caddy and the app container via UserData on first boot. Unlike AWS pre-baked AMIs, expect **8–15 minutes** before the service is reachable.
-
-**Default behavior:** after ROS `CREATE_COMPLETE`, `deploy` keeps polling `ServiceURL` (`/health` and `/`) until the app responds or `--timeout` is reached, the same as AWS. Pass `--no-wait-ready` to return right after the stack is created.
-
-Only **`cn-hongkong`** is supported. You need a VPC, VSwitch, and SSH KeyPair in that region.
-
-```bash
-cloud-forge auth aliyun
-cloud-forge auth aliyun status
-
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx \
-  --vswitch-id vsw-xxx \
-  --key my-key \
-  --allowed-ip <YOUR_IP>/32 \
-  --timeout 20m
-
-# Stack only — do not wait for bootstrap
-cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
-  --vpc-id vpc-xxx --vswitch-id vsw-xxx --key my-key --no-wait-ready
-
-cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
-```
-
-Container images use Docker Hub short names (reachable from Hong Kong ECS without ACR).
-
 ## Telemetry
 
-By default, the CLI sends anonymous, non-blocking usage events to:
-
-```text
-https://telemetry.corenovacloud.com/v1/events
-```
-
-Telemetry never includes cloud credentials, account IDs, domains, local paths, or template parameter values.
-
-Disable telemetry when needed:
+By default, the CLI sends anonymous, non-blocking usage events to `https://telemetry.corenovacloud.com/v1/events`. Telemetry never includes cloud credentials, account IDs, domains, local paths, or template parameter values.
 
 ```bash
 export CLOUD_FORGE_TELEMETRY=0
-```
-
-Use a different endpoint for local testing:
-
-```bash
-export CLOUD_FORGE_TELEMETRY_ENDPOINT="http://127.0.0.1:8787/v1/events"
+export CLOUD_FORGE_TELEMETRY_ENDPOINT="http://127.0.0.1:8787/v1/events"   # local testing
 ```
 
 ## Build From Source

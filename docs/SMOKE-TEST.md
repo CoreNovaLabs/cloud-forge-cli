@@ -16,7 +16,9 @@ git diff --exit-code index/apps.json
 export CLOUD_FORGE_STORE_URL="file://$(pwd)/index/apps.json"
 export CLOUD_FORGE_TELEMETRY=0
 
-for app in hello-nginx gitea n8n uptime-kuma; do
+# Default: certified tier; set CLOUD_FORGE_VERIFY_TIERS / CLOUD_FORGE_VERIFY_SAMPLE for community sampling
+APPS=($(../cloud-forge-catalog/scripts/list-verify-apps.sh))
+for app in "${APPS[@]}"; do
   cloud-forge show "$app"
   cloud-forge deploy "$app" --cloud aws --dry-run
   cloud-forge deploy "$app" --cloud aliyun --region cn-hongkong \
@@ -30,12 +32,15 @@ done
 cloud-forge auth aws
 cloud-forge auth aws status
 
-for app in hello-nginx gitea n8n uptime-kuma; do
+APPS=($(../cloud-forge-catalog/scripts/list-verify-apps.sh))
+for app in "${APPS[@]}"; do
   cloud-forge deploy "$app" --cloud aws --allowed-ip <YOUR_IP>/32
   # open ServiceURL from deploy output
   cloud-forge delete "cloud-forge-$app" --cloud aws
 done
 ```
+
+Full community-tier cloud verification is expensive; default to `certified` apps (same as `scripts/verify-aws-apps.sh`). Override with `CLOUD_FORGE_VERIFY_TIERS=community` or sample with `CLOUD_FORGE_VERIFY_SAMPLE`.
 
 ## Live Aliyun Hong Kong (manual)
 
@@ -62,6 +67,4 @@ cloud-forge deploy hello-nginx --cloud aliyun --region cn-hongkong \
 cloud-forge delete cloud-forge-hello-nginx --cloud aliyun --region cn-hongkong
 ```
 
-Repeat for `gitea`, `n8n`, and `uptime-kuma` when validating the full catalog.
-
-Record the cloud account, region, date, and result for each app when completing live verification.
+For broader coverage, loop over `list-verify-apps.sh` output the same way as the AWS section. Record the cloud account, region, date, and result for each app when completing live verification.
