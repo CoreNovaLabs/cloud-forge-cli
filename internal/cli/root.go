@@ -62,6 +62,7 @@ type deployFlags struct {
 	imageID      string
 	latestAMIID  string
 	caddyTlsMode string
+	adminPassword string
 	parameters   keyValueFlag
 	dryRun       bool
 	noWait       bool
@@ -488,6 +489,12 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 2
 	}
 
+	adminPassword, err := configureAdminPassword(app, deploy)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+
 	parameters, err := buildAWSDeployParameters(app, deploy)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -612,6 +619,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		showProgress := deploy.progress == "plain"
 		if err := waitServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
 			printDeployResult(stdout, result)
+			printAdminPassword(stdout, adminPassword, deploy.dryRun)
 			fmt.Fprintf(stderr, "\n%v\n", err)
 			return 1
 		}
@@ -620,6 +628,7 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 
 	printDeployResult(stdout, result)
+	printAdminPassword(stdout, adminPassword, deploy.dryRun)
 	if !deploy.dryRun {
 		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aws --region %s\n", stackName, result.Region)
 	}
@@ -887,6 +896,7 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 	flags.StringVar(&deploy.imageID, "image-id", "", "CloudFormation ImageId parameter")
 	flags.StringVar(&deploy.latestAMIID, "latest-ami-id", "", "CloudFormation LatestAmiId parameter")
 	flags.StringVar(&deploy.caddyTlsMode, "caddy-tls-mode", "", "CloudFormation CaddyTlsMode parameter")
+	flags.StringVar(&deploy.adminPassword, "admin-password", "", "AdminPassword parameter for apps that require it (auto-generated when omitted)")
 	flags.Var(deploy.parameters, "param", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.Var(deploy.parameters, "parameter", "CloudFormation parameter override as Name=Value; may be repeated")
 	flags.BoolVar(&deploy.dryRun, "dry-run", false, "validate template and parameters without creating or updating a stack")

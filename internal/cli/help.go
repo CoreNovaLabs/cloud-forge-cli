@@ -143,6 +143,7 @@ Flags:
   --image-id <id>              ImageId / LatestAmiId override
   --latest-ami-id <ami>        LatestAmiId parameter override (AWS)
   --caddy-tls-mode <mode>      CaddyTlsMode parameter
+  --admin-password <password>  AdminPassword for apps that require it (auto-generated when omitted)
   --param, --parameter <k=v>   Parameter override (repeatable)
   --store-url <url>            Catalog index URL or local file path
   --cache-dir <path>           Catalog cache directory

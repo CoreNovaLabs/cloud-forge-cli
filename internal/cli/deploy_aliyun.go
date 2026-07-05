@@ -145,6 +145,16 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 1
 	}
 
+	adminPassword, err := configureAdminPassword(app, deploy)
+	if err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "invalid_parameters",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+
 	parameters, err := buildAliyunDeployParameters(app, deploy)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -220,6 +230,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		showProgress := deploy.progress == "plain"
 		if err := waitServiceReady(ctx, stdout, result.Outputs, deadline, showProgress); err != nil {
 			printAliyunDeployResult(stdout, result)
+			printAdminPassword(stdout, adminPassword, deploy.dryRun)
 			fmt.Fprintf(stderr, "\n%v\n", err)
 			return 1
 		}
@@ -228,6 +239,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 
 	printAliyunDeployResult(stdout, result)
+	printAdminPassword(stdout, adminPassword, deploy.dryRun)
 	if !deploy.dryRun {
 		fmt.Fprintf(stdout, "\nTo remove later: cloud-forge delete %s --cloud aliyun --region %s\n", stackName, result.Region)
 	}
