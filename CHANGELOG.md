@@ -4,8 +4,14 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `AdminPassword` auto-generation and `--admin-password` deploy flag
+- `scripts/verify-admin-password-start.sh` local verification helper
+
 ### Changed
 
+- README (EN/zh-CN) and SMOKE-TEST: catalog-centric app discovery instead of fixed app list
 - `verify-aws-apps.sh` and `verify-aliyun-apps.sh` select apps via catalog `list-verify-apps.sh` (default: `certified` tier)
 - Supports `CLOUD_FORGE_VERIFY_TIERS` and `CLOUD_FORGE_VERIFY_SAMPLE` for community random sampling
 
