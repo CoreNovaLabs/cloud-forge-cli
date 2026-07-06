@@ -4,6 +4,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-07-06
+
+### Fixed
+
+- Windows browser launch now opens Cloud Forge through PowerShell with `-NoExit`, keeping deploy progress and startup errors visible.
+
 ## [0.3.5] - 2026-07-06
 
 ### Fixed

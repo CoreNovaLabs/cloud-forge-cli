@@ -130,7 +130,7 @@ MimeType=x-scheme-handler/cloud-forge;
 }
 
 func installProtocolWindows(exe string) error {
-	command := `"` + exe + `" launch-url "%1"`
+	command := windowsProtocolCommand(exe)
 	commands := [][]string{
 		{"add", `HKCU\Software\Classes\cloud-forge`, "/ve", "/d", "URL:Cloud Forge Protocol", "/f"},
 		{"add", `HKCU\Software\Classes\cloud-forge`, "/v", "URL Protocol", "/d", "", "/f"},
@@ -142,6 +142,12 @@ func installProtocolWindows(exe string) error {
 		}
 	}
 	return nil
+}
+
+func windowsProtocolCommand(exe string) string {
+	return `powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -Command "& '` +
+		windowsPowerShellSingleQuote(exe) +
+		`' launch-url $args[0]" "%1"`
 }
 
 func cloudForgeProtocolDir() (string, error) {
@@ -191,6 +197,10 @@ func appleScriptString(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	value = strings.ReplaceAll(value, `"`, `\"`)
 	return `"` + value + `"`
+}
+
+func windowsPowerShellSingleQuote(value string) string {
+	return strings.ReplaceAll(value, `'`, `''`)
 }
 
 func desktopExecQuote(value string) string {

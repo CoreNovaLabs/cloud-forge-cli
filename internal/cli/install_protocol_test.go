@@ -26,3 +26,29 @@ func TestDarwinProtocolScriptOpensCommandFileInTerminal(t *testing.T) {
 		t.Fatalf("script did not preserve executable path:\n%s", script)
 	}
 }
+
+func TestWindowsProtocolCommandKeepsWindowOpen(t *testing.T) {
+	command := windowsProtocolCommand(`C:\Program Files\Cloud Forge\cloud-forge.exe`)
+
+	for _, want := range []string{
+		"powershell.exe",
+		"-NoExit",
+		`'C:\Program Files\Cloud Forge\cloud-forge.exe'`,
+		"launch-url $args[0]",
+		`"%1"`,
+	} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("command missing %q: %s", want, command)
+		}
+	}
+	if strings.Contains(command, "cmd.exe") || strings.Contains(command, `/k`) {
+		t.Fatalf("command should avoid cmd.exe parsing: %s", command)
+	}
+}
+
+func TestWindowsProtocolCommandEscapesPowerShellSingleQuotes(t *testing.T) {
+	command := windowsProtocolCommand(`C:\Cloud Forge's CLI\cloud-forge.exe`)
+	if !strings.Contains(command, `'C:\Cloud Forge''s CLI\cloud-forge.exe'`) {
+		t.Fatalf("command did not escape PowerShell single quote: %s", command)
+	}
+}
