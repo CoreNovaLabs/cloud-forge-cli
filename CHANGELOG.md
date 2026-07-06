@@ -4,6 +4,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-07-06
+
+### Fixed
+
+- Windows browser launch now passes `cloud-forge://` URLs through a PowerShell `-File` launcher so query strings containing `&` are not parsed as PowerShell operators.
+
 ## [0.3.7] - 2026-07-06
 
 ### Added

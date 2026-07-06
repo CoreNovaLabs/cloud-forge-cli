@@ -130,7 +130,19 @@ MimeType=x-scheme-handler/cloud-forge;
 }
 
 func installProtocolWindows(exe string) error {
-	command := windowsProtocolCommand(exe)
+	protocolDir, err := cloudForgeProtocolDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(protocolDir, 0o755); err != nil {
+		return err
+	}
+	scriptPath := filepath.Join(protocolDir, "launcher.ps1")
+	if err := os.WriteFile(scriptPath, []byte(windowsProtocolScript(exe)), 0o644); err != nil {
+		return err
+	}
+
+	command := windowsProtocolCommand(scriptPath)
 	commands := [][]string{
 		{"add", `HKCU\Software\Classes\cloud-forge`, "/ve", "/d", "URL:Cloud Forge Protocol", "/f"},
 		{"add", `HKCU\Software\Classes\cloud-forge`, "/v", "URL Protocol", "/d", "", "/f"},
@@ -144,10 +156,23 @@ func installProtocolWindows(exe string) error {
 	return nil
 }
 
-func windowsProtocolCommand(exe string) string {
-	return `powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -Command "& '` +
-		windowsPowerShellSingleQuote(exe) +
-		`' launch-url $args[0]" "%1"`
+func windowsProtocolCommand(scriptPath string) string {
+	return `powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File "` + scriptPath + `" "%1"`
+}
+
+func windowsProtocolScript(exe string) string {
+	return `param(
+  [Parameter(Mandatory = $true)]
+  [string]$LaunchUrl
+)
+
+$ErrorActionPreference = "Stop"
+$CloudForge = '` + windowsPowerShellSingleQuote(exe) + `'
+& $CloudForge launch-url $LaunchUrl
+if ($LASTEXITCODE -ne 0) {
+  exit $LASTEXITCODE
+}
+`
 }
 
 func cloudForgeProtocolDir() (string, error) {

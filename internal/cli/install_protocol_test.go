@@ -28,27 +28,42 @@ func TestDarwinProtocolScriptOpensCommandFileInTerminal(t *testing.T) {
 }
 
 func TestWindowsProtocolCommandKeepsWindowOpen(t *testing.T) {
-	command := windowsProtocolCommand(`C:\Program Files\Cloud Forge\cloud-forge.exe`)
+	command := windowsProtocolCommand(`C:\Users\me\.cloud-forge\protocol\launcher.ps1`)
 
 	for _, want := range []string{
 		"powershell.exe",
 		"-NoExit",
-		`'C:\Program Files\Cloud Forge\cloud-forge.exe'`,
-		"launch-url $args[0]",
+		"-File",
+		`"C:\Users\me\.cloud-forge\protocol\launcher.ps1"`,
 		`"%1"`,
 	} {
 		if !strings.Contains(command, want) {
 			t.Fatalf("command missing %q: %s", want, command)
 		}
 	}
-	if strings.Contains(command, "cmd.exe") || strings.Contains(command, `/k`) {
-		t.Fatalf("command should avoid cmd.exe parsing: %s", command)
+	for _, bad := range []string{"cmd.exe", `/k`, "-Command", "$args[0]"} {
+		if strings.Contains(command, bad) {
+			t.Fatalf("command should avoid %q parsing: %s", bad, command)
+		}
 	}
 }
 
-func TestWindowsProtocolCommandEscapesPowerShellSingleQuotes(t *testing.T) {
-	command := windowsProtocolCommand(`C:\Cloud Forge's CLI\cloud-forge.exe`)
-	if !strings.Contains(command, `'C:\Cloud Forge''s CLI\cloud-forge.exe'`) {
-		t.Fatalf("command did not escape PowerShell single quote: %s", command)
+func TestWindowsProtocolScriptPassesLaunchURLAsArgument(t *testing.T) {
+	script := windowsProtocolScript(`C:\Cloud Forge's CLI\cloud-forge.exe`)
+
+	for _, want := range []string{
+		"param(",
+		"[string]$LaunchUrl",
+		`'C:\Cloud Forge''s CLI\cloud-forge.exe'`,
+		"& $CloudForge launch-url $LaunchUrl",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("script missing %q:\n%s", want, script)
+		}
+	}
+	for _, bad := range []string{"$args[0]", "cloud-forge://", "&cloud="} {
+		if strings.Contains(script, bad) {
+			t.Fatalf("script should not inline URL parsing token %q:\n%s", bad, script)
+		}
 	}
 }
