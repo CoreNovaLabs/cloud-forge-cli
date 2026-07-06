@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.6"
+var Version = "0.3.7"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -1392,11 +1393,19 @@ func requireCompatibleCLI(app *store.App) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"app %q requires cloud-forge CLI >= %s (current %s); upgrade with: curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash",
+		"app %q requires cloud-forge CLI >= %s (current %s); upgrade with: %s",
 		app.ID,
 		app.MinCLIVersion,
 		Version,
+		upgradeInstallCommand(),
 	)
+}
+
+func upgradeInstallCommand() string {
+	if runtime.GOOS == "windows" {
+		return "irm https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.ps1 | iex"
+	}
+	return "curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash"
 }
 
 func versionAtLeast(current, minimum string) (bool, error) {

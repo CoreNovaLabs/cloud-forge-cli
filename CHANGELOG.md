@@ -4,6 +4,17 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-07-06
+
+### Added
+
+- Windows PowerShell installer via `scripts/install.ps1`.
+- Windows ARM64 release archive.
+
+### Fixed
+
+- CLI upgrade guidance now shows a PowerShell install command on Windows.
+
 ## [0.3.6] - 2026-07-06
 
 ### Fixed

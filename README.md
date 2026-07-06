@@ -32,7 +32,15 @@
 </p>
 
 ```bash
+# macOS / Linux
 curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
+cloud-forge auth aws
+cloud-forge deploy hello-nginx --cloud aws
+```
+
+```powershell
+# Windows PowerShell
+irm https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.ps1 | iex
 cloud-forge auth aws
 cloud-forge deploy hello-nginx --cloud aws
 ```
@@ -58,12 +66,24 @@ Default regions: AWS `us-east-1`, Aliyun `cn-hongkong` (override with `--region`
 
 ## Install
 
-The one-liner above installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
+On macOS and Linux, the one-liner above installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
+
+On Windows, run this in PowerShell:
+
+```powershell
+irm https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.ps1 | iex
+```
+
+The Windows installer writes `cloud-forge.exe` to `%LOCALAPPDATA%\Programs\CloudForge` and adds that directory to your user `PATH`.
 
 If the CDN is stale or unavailable in your network, use the GitHub raw URL instead:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.ps1 | iex
 ```
 
 Manual install from [GitHub Releases](https://github.com/CoreNovaLabs/cloud-forge-cli/releases): unpack the archive and move the binary to a directory on your `PATH`.

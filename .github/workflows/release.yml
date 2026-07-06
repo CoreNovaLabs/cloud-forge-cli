@@ -65,6 +65,7 @@ jobs:
           build linux amd64 "" tar.gz
           build linux arm64 "" tar.gz
           build windows amd64 ".exe" zip
+          build windows arm64 ".exe" zip
 
           (cd dist && sha256sum * > checksums.txt)
 

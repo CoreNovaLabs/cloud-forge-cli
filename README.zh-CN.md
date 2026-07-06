@@ -32,7 +32,15 @@
 </p>
 
 ```bash
+# macOS / Linux
 curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
+cloud-forge auth aws
+cloud-forge deploy hello-nginx --cloud aws
+```
+
+```powershell
+# Windows PowerShell
+irm https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.ps1 | iex
 cloud-forge auth aws
 cloud-forge deploy hello-nginx --cloud aws
 ```
@@ -58,12 +66,24 @@ Cloud Forge CLI 是 [Cloud Forge Catalog](https://github.com/CoreNovaLabs/cloud-
 
 ## 安装
 
-上方一行命令会把 `cloud-forge` 安装到 `~/.local/bin`。若 shell 找不到命令，请将该目录加入 `PATH`。
+macOS 和 Linux 上，上方一行命令会把 `cloud-forge` 安装到 `~/.local/bin`。若 shell 找不到命令，请将该目录加入 `PATH`。
+
+Windows 请在 PowerShell 中运行：
+
+```powershell
+irm https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.ps1 | iex
+```
+
+Windows 安装器会把 `cloud-forge.exe` 写入 `%LOCALAPPDATA%\Programs\CloudForge`，并将该目录加入用户 `PATH`。
 
 若 CDN 不可用，可改用 GitHub raw 地址：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.ps1 | iex
 ```
 
 也可从 [GitHub Releases](https://github.com/CoreNovaLabs/cloud-forge-cli/releases) 手动下载：解压后将二进制放到 `PATH` 中的目录。

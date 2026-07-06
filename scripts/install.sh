@@ -20,6 +20,9 @@ Usage:
   curl -fsSL https://cdn.jsdelivr.net/gh/${REPO}@main/scripts/install.sh | bash
   CLOUD_FORGE_VERSION=v0.2.0 bash install.sh
 
+Windows PowerShell:
+  irm https://cdn.jsdelivr.net/gh/${REPO}@main/scripts/install.ps1 | iex
+
 Environment:
   CLOUD_FORGE_REPO          GitHub repository (default: CoreNovaLabs/cloud-forge-cli)
   CLOUD_FORGE_VERSION       Release tag or "latest" (default: latest)
