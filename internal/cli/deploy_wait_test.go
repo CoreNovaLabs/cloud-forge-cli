@@ -29,6 +29,22 @@ func TestProbeTargetsHTTP(t *testing.T) {
 	}
 }
 
+func TestProbeTargetsAddsPublicIPFallback(t *testing.T) {
+	targets := probeTargets(map[string]string{
+		"ServiceURL": "https://eip-allocation-id",
+		"PublicIP":   "203.0.113.10",
+	})
+	if len(targets) != 4 {
+		t.Fatalf("unexpected target count: %#v", targets)
+	}
+	if targets[0].display != "https://eip-allocation-id/health" ||
+		targets[1].display != "https://eip-allocation-id/" ||
+		targets[2].display != "https://203.0.113.10/health" ||
+		targets[3].display != "https://203.0.113.10/" {
+		t.Fatalf("unexpected targets: %#v", targets)
+	}
+}
+
 func TestProbeTargetsDB(t *testing.T) {
 	targets := probeTargets(map[string]string{
 		"ServiceURL": "mysql://203.0.113.10:3306",
@@ -41,6 +57,17 @@ func TestProbeTargetsDB(t *testing.T) {
 	}
 	if targets[0].display != "mysql://203.0.113.10:3306" {
 		t.Fatalf("unexpected display target: %#v", targets)
+	}
+
+	targets = probeTargets(map[string]string{
+		"ServiceURL": "mysql://eip-allocation-id:3306",
+		"PublicIP":   "203.0.113.10",
+	})
+	if len(targets) != 2 {
+		t.Fatalf("unexpected target count: %#v", targets)
+	}
+	if targets[1].display != "mysql://203.0.113.10:3306" || targets[1].tcpAddr != "203.0.113.10:3306" {
+		t.Fatalf("unexpected public IP tcp fallback: %#v", targets)
 	}
 }
 

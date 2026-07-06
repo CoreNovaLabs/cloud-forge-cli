@@ -41,15 +41,22 @@ type serviceProbe struct {
 // or postgresql are treated as TCP endpoints.
 func probeTargets(outputs map[string]string) []serviceProbe {
 	base := strings.TrimSpace(outputs["ServiceURL"])
-	if base == "" {
-		if ip := strings.TrimSpace(outputs["PublicIP"]); ip != "" {
-			base = "https://" + ip
-		}
+	publicIP := strings.TrimSpace(outputs["PublicIP"])
+	if base == "" && publicIP != "" {
+		base = "https://" + publicIP
 	}
 	if base == "" {
 		return nil
 	}
 
+	probes := probesForServiceURL(base)
+	if publicIP != "" {
+		probes = append(probes, publicIPFallbackProbes(base, publicIP)...)
+	}
+	return dedupeServiceProbes(probes)
+}
+
+func probesForServiceURL(base string) []serviceProbe {
 	parsed, err := url.Parse(base)
 	if err != nil {
 		return nil
@@ -75,6 +82,50 @@ func probeTargets(outputs map[string]string) []serviceProbe {
 			},
 		}
 	}
+}
+
+func publicIPFallbackProbes(serviceURL, publicIP string) []serviceProbe {
+	parsed, err := url.Parse(serviceURL)
+	if err != nil {
+		return nil
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "http", "https", "":
+		if scheme == "" {
+			scheme = "https"
+		}
+		return probesForServiceURL(scheme + "://" + publicIP)
+	default:
+		port := strings.TrimSpace(parsed.Port())
+		if port == "" {
+			return nil
+		}
+		display := fmt.Sprintf("%s://%s:%s", scheme, publicIP, port)
+		return []serviceProbe{{
+			display: display,
+			tcpAddr: net.JoinHostPort(publicIP, port),
+		}}
+	}
+}
+
+func dedupeServiceProbes(probes []serviceProbe) []serviceProbe {
+	seen := make(map[string]bool, len(probes))
+	out := make([]serviceProbe, 0, len(probes))
+	for _, probe := range probes {
+		key := probe.display
+		if probe.tcpAddr != "" {
+			key = "tcp:" + probe.tcpAddr
+		} else if probe.url != "" {
+			key = "url:" + probe.url
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, probe)
+	}
+	return out
 }
 
 func probeDisplayStrings(probes []serviceProbe) []string {

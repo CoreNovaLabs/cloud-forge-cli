@@ -4,6 +4,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-07-06
+
+### Fixed
+
+- Bootstrap readiness checks now also probe the stack `PublicIP` when `ServiceURL` points to a custom/domain endpoint, so old Aliyun templates with incorrect EIP output do not wait forever after the app is reachable by IP.
+
 ## [0.3.9] - 2026-07-06
 
 ### Fixed
