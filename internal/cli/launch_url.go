@@ -90,6 +90,7 @@ func deployArgsFromLaunchURL(raw string) ([]string, error) {
 	appendQueryFlag([]string{"region"}, "--region")
 	appendQueryFlag([]string{"profile"}, "--profile")
 	appendQueryFlag([]string{"stackName", "stack-name"}, "--stack-name")
+	appendQueryFlag([]string{"cacheTTL", "cache-ttl"}, "--cache-ttl")
 	appendBoolFlag(query, &deployArgs, "dryRun", "--dry-run")
 	appendBoolFlag(query, &deployArgs, "noWait", "--no-wait")
 	appendBoolFlag(query, &deployArgs, "noWaitReady", "--no-wait-ready")

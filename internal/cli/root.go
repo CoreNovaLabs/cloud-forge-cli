@@ -20,7 +20,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.10"
+var Version = "0.3.11"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -990,14 +990,14 @@ func runTemplate(ctx context.Context, args []string, stdout, stderr io.Writer) i
 func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	common := &commonFlags{
 		storeURL: defaultStoreURL,
-		cacheTTL: 24 * time.Hour,
+		cacheTTL: 0,
 	}
 	if envURL := os.Getenv("CLOUD_FORGE_STORE_URL"); envURL != "" {
 		common.storeURL = envURL
 	}
 	flags.StringVar(&common.storeURL, "store-url", common.storeURL, "catalog index URL or local path")
 	flags.StringVar(&common.cacheDir, "cache-dir", "", "cache directory")
-	flags.DurationVar(&common.cacheTTL, "cache-ttl", common.cacheTTL, "catalog cache TTL")
+	flags.DurationVar(&common.cacheTTL, "cache-ttl", common.cacheTTL, "catalog cache TTL; 0 forces refresh")
 	flags.StringVar(&common.telemetryEndpoint, "telemetry-endpoint", telemetryEndpointFromEnv(), "telemetry endpoint URL")
 	flags.StringVar(&common.cloud, "cloud", "", "cloud provider filter")
 	flags.StringVar(&common.category, "category", "", "category filter")

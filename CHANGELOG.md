@@ -4,6 +4,13 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-07-06
+
+### Fixed
+
+- Catalog indexes now refresh by default so deploys pick up newly published templates instead of reusing a 24-hour local cache.
+- Browser launch URLs can pass `cacheTTL`, allowing the web launcher to force a fresh catalog/template lookup.
+
 ## [0.3.10] - 2026-07-06
 
 ### Fixed

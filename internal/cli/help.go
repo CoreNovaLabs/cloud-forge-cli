@@ -84,7 +84,7 @@ Flags:
   --tag <name>           Filter by tag (repeatable)
   --store-url <url>      Catalog index URL or local file path
   --cache-dir <path>     Catalog cache directory
-  --cache-ttl <duration> Catalog cache TTL
+  --cache-ttl <duration> Catalog cache TTL; 0 forces refresh
 
 `)
 }
@@ -98,7 +98,7 @@ Show app metadata, supported clouds, pricing, and deploy parameters.
 Flags:
   --store-url <url>      Catalog index URL or local file path
   --cache-dir <path>     Catalog cache directory
-  --cache-ttl <duration> Catalog cache TTL
+  --cache-ttl <duration> Catalog cache TTL; 0 forces refresh
 
 `)
 }
@@ -113,7 +113,7 @@ Flags:
   --cloud <aws|aliyun>   Cloud provider (default: aws)
   --store-url <url>      Catalog index URL or local file path
   --cache-dir <path>     Catalog cache directory
-  --cache-ttl <duration> Catalog cache TTL
+  --cache-ttl <duration> Catalog cache TTL; 0 forces refresh
 
 `)
 }
@@ -155,7 +155,7 @@ Flags:
   --param, --parameter <k=v>   Parameter override (repeatable)
   --store-url <url>            Catalog index URL or local file path
   --cache-dir <path>           Catalog cache directory
-  --cache-ttl <duration>       Catalog cache TTL
+  --cache-ttl <duration>       Catalog cache TTL; 0 forces refresh
 
 Examples:
   cloud-forge deploy hello-nginx --cloud aws --dry-run

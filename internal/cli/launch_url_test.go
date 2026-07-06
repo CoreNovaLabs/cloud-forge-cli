@@ -42,6 +42,21 @@ func TestDeployArgsFromLaunchURLSupportsPathAppAndBooleans(t *testing.T) {
 	}
 }
 
+func TestDeployArgsFromLaunchURLSupportsCacheTTL(t *testing.T) {
+	args, err := deployArgsFromLaunchURL("cloud-forge://deploy?app=hello-nginx&cloud=aws&cacheTTL=0s")
+	if err != nil {
+		t.Fatalf("deployArgsFromLaunchURL() error = %v", err)
+	}
+	want := []string{
+		"deploy", "hello-nginx",
+		"--cloud", "aws",
+		"--cache-ttl", "0s",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("deployArgsFromLaunchURL() = %#v, want %#v", args, want)
+	}
+}
+
 func TestDeployArgsFromLaunchURLRejectsInvalidInput(t *testing.T) {
 	tests := []string{
 		"https://example.com/deploy?app=actual-budget",
