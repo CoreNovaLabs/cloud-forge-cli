@@ -17,7 +17,7 @@ usage() {
 Cloud Forge CLI installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/scripts/install.sh | bash
+  curl -fsSL https://cdn.jsdelivr.net/gh/${REPO}@main/scripts/install.sh | bash
   CLOUD_FORGE_VERSION=v0.2.0 bash install.sh
 
 Environment:
