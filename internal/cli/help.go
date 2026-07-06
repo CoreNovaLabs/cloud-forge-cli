@@ -127,7 +127,7 @@ Create or update a CloudFormation (AWS) or ROS (Aliyun) stack for a catalog app.
 Flags:
   --cloud <aws|aliyun>         Cloud provider (default: aws)
   --region <name>              AWS region (default: us-east-1) or Aliyun region (default: cn-hongkong)
-  --profile <name>             AWS shared config profile
+  --profile <name>             AWS shared config profile or Aliyun credentials profile
   --stack-name <name>          Stack name (default: cloud-forge-<app>)
   --instance-type <type>       InstanceType parameter
   --allowed-ip <cidr>          Restrict SSH to this CIDR
@@ -173,7 +173,7 @@ Delete a stack created by Cloud Forge.
 Flags:
   --cloud <aws|aliyun>       Cloud provider (default: aws)
   --region <name>            AWS region (default: us-east-1) or Aliyun region (default: cn-hongkong)
-  --profile <name>           AWS shared config profile
+  --profile <name>           AWS shared config profile or Aliyun credentials profile
   --no-wait                  Return immediately after starting deletion
   --timeout <duration>       Maximum wait time (default: 30m)
   --progress <plain|none>    Show stack progress events (default: plain)

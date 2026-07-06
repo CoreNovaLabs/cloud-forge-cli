@@ -20,7 +20,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.8"
+var Version = "0.3.9"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -367,6 +367,18 @@ func runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 	del.progress = progressMode
 
+	if err := checkAWSCredentials(ctx, del.profile, del.region); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "destroy",
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "aws_auth",
+		})
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
 	deployer, err := newAWSDeployer(ctx, awsdeploy.Config{
 		Region:  del.region,
 		Profile: del.profile,
@@ -500,6 +512,20 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			ErrorCode:  "cloud_not_supported",
 		})
 		fmt.Fprintf(stderr, "app %q does not support aws\n", app.ID)
+		return 1
+	}
+
+	if err := checkAWSCredentials(ctx, deploy.profile, deploy.region); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "deploy",
+			AppID:      app.ID,
+			AppVersion: app.Version,
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "aws_auth",
+		})
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 
@@ -986,8 +1012,8 @@ func addDeployFlags(flags *flag.FlagSet) *deployFlags {
 		timeout:    awsdeploy.DefaultTimeout,
 		waitReady:  true,
 	}
-	flags.StringVar(&deploy.region, "region", deploy.region, "AWS region")
-	flags.StringVar(&deploy.profile, "profile", "", "AWS shared config profile")
+	flags.StringVar(&deploy.region, "region", deploy.region, "AWS or Aliyun region")
+	flags.StringVar(&deploy.profile, "profile", "", "AWS shared config profile or Aliyun credentials profile")
 	flags.StringVar(&deploy.stackName, "stack-name", "", "CloudFormation stack name")
 	flags.StringVar(&deploy.instanceType, "instance-type", "", "CloudFormation InstanceType parameter")
 	flags.StringVar(&deploy.keyName, "key", "", "existing AWS EC2 key pair name")
@@ -1026,8 +1052,8 @@ func addDeleteFlags(flags *flag.FlagSet) *deleteFlags {
 		timeout:  awsdeploy.DefaultTimeout,
 		progress: "plain",
 	}
-	flags.StringVar(&del.region, "region", del.region, "AWS region")
-	flags.StringVar(&del.profile, "profile", "", "AWS shared config profile")
+	flags.StringVar(&del.region, "region", del.region, "AWS or Aliyun region")
+	flags.StringVar(&del.profile, "profile", "", "AWS shared config profile or Aliyun credentials profile")
 	flags.BoolVar(&del.noWait, "no-wait", false, "return immediately after starting stack deletion")
 	flags.DurationVar(&del.timeout, "timeout", del.timeout, "maximum time to wait for stack deletion")
 	flags.StringVar(&del.progress, "progress", del.progress, "deletion progress output: plain or none")

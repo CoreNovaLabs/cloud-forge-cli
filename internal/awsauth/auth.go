@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
 	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
@@ -129,13 +130,17 @@ func (r Runner) checkIdentity(ctx context.Context, profile, region string) (*Ide
 }
 
 func CheckIdentity(ctx context.Context, profile, region string) (*Identity, error) {
-	profile = defaultString(profile, DefaultProfile)
+	requestedProfile := strings.TrimSpace(profile)
 	region = defaultString(region, DefaultRegion)
 
-	cfg, err := config.LoadDefaultConfig(ctx,
+	options := []func(*config.LoadOptions) error{
 		config.WithRegion(region),
-		config.WithSharedConfigProfile(profile),
-	)
+		config.WithEC2IMDSClientEnableState(imds.ClientDisabled),
+	}
+	if requestedProfile != "" {
+		options = append(options, config.WithSharedConfigProfile(requestedProfile))
+	}
+	cfg, err := config.LoadDefaultConfig(ctx, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +152,19 @@ func CheckIdentity(ctx context.Context, profile, region string) (*Identity, erro
 	if err != nil {
 		return nil, err
 	}
+	profileName := requestedProfile
+	if profileName == "" {
+		profileName = strings.TrimSpace(os.Getenv("AWS_PROFILE"))
+	}
+	if profileName == "" {
+		profileName = DefaultProfile
+	}
 	return &Identity{
 		Account: aws.ToString(out.Account),
 		UserID:  aws.ToString(out.UserId),
 		Arn:     aws.ToString(out.Arn),
 		Region:  cfg.Region,
-		Profile: profile,
+		Profile: profileName,
 		Source:  creds.Source,
 	}, nil
 }

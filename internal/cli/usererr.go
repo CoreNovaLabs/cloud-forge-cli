@@ -17,7 +17,10 @@ func formatUserError(err error) string {
 	msg := strings.ToLower(err.Error())
 
 	switch {
-	case strings.Contains(msg, "no valid credential"):
+	case strings.Contains(msg, "no valid credential") ||
+		strings.Contains(msg, "failed to refresh cached credentials") ||
+		strings.Contains(msg, "no ec2 imds role found") ||
+		strings.Contains(msg, "169.254.169.254"):
 		return "AWS credentials are not configured. Run: cloud-forge auth aws"
 	case strings.Contains(msg, "load aws config"):
 		return "Could not load AWS configuration. Run: cloud-forge auth aws or set AWS_PROFILE / AWS_ACCESS_KEY_ID."
@@ -37,6 +40,11 @@ func formatUserError(err error) string {
 		return "AWS authorization failed. Check your credentials and try: cloud-forge auth aws status"
 	case strings.Contains(msg, "aliyun credentials are not configured"):
 		return "Aliyun credentials are not configured. Run: cloud-forge auth aliyun"
+	case strings.Contains(msg, "invalidaccesskeyid") ||
+		strings.Contains(msg, "invalid accesskey") ||
+		strings.Contains(msg, "signaturedoesnotmatch") ||
+		strings.Contains(msg, "signature not match"):
+		return "Aliyun credentials are not configured or invalid. Run: cloud-forge auth aliyun"
 	case strings.Contains(msg, "check aliyun identity"):
 		return "Could not verify Aliyun credentials. Run: cloud-forge auth aliyun status"
 	case strings.Contains(msg, "validate ros template"):

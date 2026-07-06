@@ -91,6 +91,43 @@ func TestRunnerUsesAWSLoginForBrowserMethod(t *testing.T) {
 	}
 }
 
+func TestCheckIdentityWithoutCredentialsDoesNotProbeIMDS(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, ".aws", "missing-config"))
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, ".aws", "missing-credentials"))
+	for _, key := range []string{
+		"AWS_PROFILE",
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_SESSION_TOKEN",
+		"AWS_SECURITY_TOKEN",
+		"AWS_WEB_IDENTITY_TOKEN_FILE",
+		"AWS_ROLE_ARN",
+		"AWS_ROLE_SESSION_NAME",
+		"AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+		"AWS_CONTAINER_CREDENTIALS_FULL_URI",
+		"AWS_CONTAINER_AUTHORIZATION_TOKEN",
+		"AWS_EC2_METADATA_DISABLED",
+	} {
+		t.Setenv(key, "")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, err := CheckIdentity(ctx, "", "us-east-1")
+	if err == nil {
+		t.Fatal("expected missing credentials error")
+	}
+	if time.Since(started) > time.Second {
+		t.Fatalf("CheckIdentity took too long with no local credentials: %s", time.Since(started))
+	}
+	if strings.Contains(err.Error(), "169.254.169.254") {
+		t.Fatalf("CheckIdentity leaked IMDS endpoint detail: %v", err)
+	}
+}
+
 func TestSetINIValuesUpdatesExistingSection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config")
 	if err := os.WriteFile(path, []byte("[default]\nregion = us-west-2\noutput = json\n\n[profile dev]\nregion = eu-west-1\n"), 0600); err != nil {

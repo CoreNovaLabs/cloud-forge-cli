@@ -27,6 +27,7 @@ func MainlandChinaRegion(region string) bool {
 }
 
 type Config struct {
+	Profile         string
 	Region          string
 	AccessKeyID     string
 	AccessKeySecret string
@@ -52,7 +53,7 @@ func LoadConfig(cfg Config) (Config, error) {
 	}
 
 	if loaded.AccessKeyID == "" || loaded.AccessKeySecret == "" {
-		if fileCfg, err := readCredentialsFile(DefaultProfile); err == nil {
+		if fileCfg, err := readCredentialsFile(defaultString(cfg.Profile, DefaultProfile)); err == nil {
 			if loaded.AccessKeyID == "" {
 				loaded.AccessKeyID = fileCfg.AccessKeyID
 			}

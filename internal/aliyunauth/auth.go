@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cloud-forge/cli/internal/aliyundeploy"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/client"
 	sts "github.com/alibabacloud-go/sts-20150401/client"
 	"github.com/alibabacloud-go/tea/tea"
+	"github.com/cloud-forge/cli/internal/aliyundeploy"
 	"golang.org/x/term"
 )
 
@@ -123,6 +123,7 @@ func (r Runner) checkIdentity(ctx context.Context, opts Options) (*Identity, err
 
 func CheckIdentity(ctx context.Context, cfg Config) (*Identity, error) {
 	loaded, err := aliyundeploy.LoadConfig(aliyundeploy.Config{
+		Profile:         cfg.Profile,
 		Region:          cfg.Region,
 		AccessKeyID:     cfg.AccessKeyID,
 		AccessKeySecret: cfg.AccessKeySecret,

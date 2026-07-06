@@ -39,6 +39,30 @@ func TestLoadConfigFromFile(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromNamedProfile(t *testing.T) {
+	dir := t.TempDir()
+	credDir := filepath.Join(dir, ".cloud-forge", "aliyun")
+	if err := os.MkdirAll(credDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	content := "[default]\naccess_key_id = default-id\naccess_key_secret = default-secret\nregion = cn-hongkong\n\n[prod]\naccess_key_id = prod-id\naccess_key_secret = prod-secret\nregion = ap-southeast-1\n"
+	if err := os.WriteFile(filepath.Join(credDir, "credentials"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", dir)
+
+	cfg, err := LoadConfig(Config{Profile: "prod"})
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.AccessKeyID != "prod-id" {
+		t.Fatalf("AccessKeyID = %q", cfg.AccessKeyID)
+	}
+	if cfg.Region != "ap-southeast-1" {
+		t.Fatalf("Region = %q", cfg.Region)
+	}
+}
+
 func TestLoadConfigAcceptsOtherRegion(t *testing.T) {
 	cfg, err := LoadConfig(Config{
 		Region:          "cn-hangzhou",

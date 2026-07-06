@@ -17,9 +17,19 @@ func TestFormatUserError(t *testing.T) {
 			want: "AWS credentials are not configured. Run: cloud-forge auth aws",
 		},
 		{
+			name: "imds credentials",
+			err:  errors.New(`get credentials: no EC2 IMDS role found: Get "http://169.254.169.254/latest/meta-data/iam/security-credentials/"`),
+			want: "AWS credentials are not configured. Run: cloud-forge auth aws",
+		},
+		{
 			name: "region",
 			err:  errors.New("aws region is required; set --region"),
 			want: "AWS region is required. Pass --region or set AWS_REGION / AWS_DEFAULT_REGION.",
+		},
+		{
+			name: "aliyun invalid access key",
+			err:  errors.New("check aliyun identity: InvalidAccessKeyId.NotFound"),
+			want: "Aliyun credentials are not configured or invalid. Run: cloud-forge auth aliyun",
 		},
 	}
 

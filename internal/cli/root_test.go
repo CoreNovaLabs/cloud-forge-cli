@@ -20,6 +20,16 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
+func TestMain(m *testing.M) {
+	checkAWSCredentials = func(ctx context.Context, profile, region string) error {
+		return nil
+	}
+	checkAliyunCredentials = func(ctx context.Context, profile, region string) error {
+		return nil
+	}
+	os.Exit(m.Run())
+}
+
 func TestSearchUsesLocalCatalog(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
 	indexPath := writeTestCatalog(t)
@@ -616,6 +626,67 @@ func TestDeployAWSAutoSSHKeyEnsuresDefaultKeyPair(t *testing.T) {
 	}
 }
 
+func TestDeployAWSCredentialPreflightStopsBeforeCloudCalls(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeTestCatalog(t)
+
+	oldCheck := checkAWSCredentials
+	checkAWSCredentials = func(ctx context.Context, profile, region string) error {
+		if profile != "test-profile" {
+			t.Fatalf("profile = %q", profile)
+		}
+		return newCredentialPreflightError("AWS", "aws", profile, region)
+	}
+	t.Cleanup(func() { checkAWSCredentials = oldCheck })
+
+	deployerCalled := false
+	oldNewAWSDeployer := newAWSDeployer
+	newAWSDeployer = func(ctx context.Context, cfg awsdeploy.Config) (awsStackDeployer, error) {
+		deployerCalled = true
+		return fakeAWSDeployer{}, nil
+	}
+	t.Cleanup(func() { newAWSDeployer = oldNewAWSDeployer })
+
+	keyPairCalled := false
+	oldEnsureAWSKeyPair := ensureAWSKeyPair
+	ensureAWSKeyPair = func(ctx context.Context, cfg awsdeploy.Config, input awsdeploy.EnsureKeyPairInput) (*awsdeploy.EnsureKeyPairOutput, error) {
+		keyPairCalled = true
+		return nil, fmt.Errorf("should not be called")
+	}
+	t.Cleanup(func() { ensureAWSKeyPair = oldEnsureAWSKeyPair })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"gitea",
+		"--cloud",
+		"aws",
+		"--profile",
+		"test-profile",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+	}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if deployerCalled {
+		t.Fatal("expected credential preflight to stop before AWS deployer creation")
+	}
+	if keyPairCalled {
+		t.Fatal("expected credential preflight to stop before EC2 key pair lookup")
+	}
+	if !strings.Contains(stderr.String(), "cloud-forge auth aws --profile test-profile") {
+		t.Fatalf("expected auth guidance with profile, got: %s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "169.254.169.254") {
+		t.Fatalf("did not expect IMDS socket detail, got: %s", stderr.String())
+	}
+}
+
 func TestDeployAWSPrintsCloudFormationProgress(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
 	indexPath := writeTestCatalog(t)
@@ -920,6 +991,67 @@ func TestDeployAliyunAutoDefaults(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Using VPC vpc-auto") {
 		t.Fatalf("expected discovery message, got: %s", stdout.String())
+	}
+}
+
+func TestDeployAliyunCredentialPreflightStopsBeforeCloudCalls(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeAliyunTestCatalog(t)
+
+	oldCheck := checkAliyunCredentials
+	checkAliyunCredentials = func(ctx context.Context, profile, region string) error {
+		if profile != "test-profile" {
+			t.Fatalf("profile = %q", profile)
+		}
+		return newCredentialPreflightError("Aliyun", "aliyun", profile, region)
+	}
+	t.Cleanup(func() { checkAliyunCredentials = oldCheck })
+
+	deployerCalled := false
+	oldNewAliyunDeployer := newAliyunDeployer
+	newAliyunDeployer = func(ctx context.Context, cfg aliyundeploy.Config) (aliyunStackDeployer, error) {
+		deployerCalled = true
+		return fakeAliyunDeployer{}, nil
+	}
+	t.Cleanup(func() { newAliyunDeployer = oldNewAliyunDeployer })
+
+	defaultsCalled := false
+	oldResolve := resolveAliyunDeployDefaults
+	resolveAliyunDeployDefaults = func(ctx context.Context, cfg aliyundeploy.Config, req aliyundeploy.DeployDefaultsRequest) (aliyundeploy.DeployDefaultsResult, error) {
+		defaultsCalled = true
+		return aliyundeploy.DeployDefaultsResult{}, nil
+	}
+	t.Cleanup(func() { resolveAliyunDeployDefaults = oldResolve })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"deploy",
+		"hello-nginx",
+		"--cloud",
+		"aliyun",
+		"--profile",
+		"test-profile",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+	}, &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if deployerCalled {
+		t.Fatal("expected credential preflight to stop before Aliyun deployer creation")
+	}
+	if defaultsCalled {
+		t.Fatal("expected credential preflight to stop before Aliyun VPC/VSwitch/KeyPair discovery")
+	}
+	if !strings.Contains(stderr.String(), "cloud-forge auth aliyun --profile test-profile") {
+		t.Fatalf("expected auth guidance with profile, got: %s", stderr.String())
+	}
+	if strings.Contains(strings.ToLower(stderr.String()), "invalidaccesskeyid") {
+		t.Fatalf("did not expect raw Aliyun credential detail, got: %s", stderr.String())
 	}
 }
 

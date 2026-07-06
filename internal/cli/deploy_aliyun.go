@@ -51,7 +51,16 @@ func runAliyunDelete(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 	del.progress = progressMode
 
-	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Region: del.region})
+	if err := checkAliyunCredentials(ctx, del.profile, del.region); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "destroy", Cloud: "aliyun", Status: "failed",
+			DurationMS: durationMS(started), ErrorCode: "aliyun_auth",
+		})
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Profile: del.profile, Region: del.region})
 	if err != nil {
 		track(common, ctx, telemetry.Event{
 			Event: "destroy", Cloud: "aliyun", Status: "failed",
@@ -146,6 +155,15 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 1
 	}
 
+	if err := checkAliyunCredentials(ctx, deploy.profile, deploy.region); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "aliyun_auth",
+		})
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
 	body, err := st.GetTemplate(ctx, app.ID, "aliyun")
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -166,7 +184,7 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
-	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Region: deploy.region})
+	deployer, err := newAliyunDeployer(ctx, aliyundeploy.Config{Profile: deploy.profile, Region: deploy.region})
 	if err != nil {
 		track(common, ctx, telemetry.Event{
 			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
@@ -295,7 +313,7 @@ func configureAliyunDeployDefaults(ctx context.Context, flags *flag.FlagSet, dep
 		return nil
 	}
 
-	result, err := resolveAliyunDeployDefaults(ctx, aliyundeploy.Config{Region: deploy.region}, aliyundeploy.DeployDefaultsRequest{
+	result, err := resolveAliyunDeployDefaults(ctx, aliyundeploy.Config{Profile: deploy.profile, Region: deploy.region}, aliyundeploy.DeployDefaultsRequest{
 		VpcID:       deploy.vpcID,
 		VSwitchID:   deploy.vswitchID,
 		KeyPairName: deploy.keyName,

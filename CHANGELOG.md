@@ -4,6 +4,13 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-07-06
+
+### Fixed
+
+- AWS and Aliyun deploy/delete now preflight cloud credentials and show actionable `cloud-forge auth ...` guidance before key-pair, VPC, ROS, or CloudFormation API calls.
+- Local AWS credential-chain failures that fall through to EC2 metadata probing are now reported as missing AWS credentials instead of low-level `169.254.169.254` socket errors.
+
 ## [0.3.8] - 2026-07-06
 
 ### Fixed
