@@ -200,6 +200,18 @@ func RunWithIO(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 			return 0
 		}
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
+	case "launch-url":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "launch-url")
+			return 0
+		}
+		return runLaunchURL(ctx, args[1:], stdin, stdout, stderr)
+	case "install-protocol":
+		if wantsHelp(args[1:]) {
+			printCommandHelp(stdout, "install-protocol")
+			return 0
+		}
+		return runInstallProtocol(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "cloud-forge %s\n", Version)
 		return 0
