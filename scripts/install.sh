@@ -4,13 +4,20 @@ set -euo pipefail
 REPO="${CLOUD_FORGE_REPO:-CoreNovaLabs/cloud-forge-cli}"
 INSTALL_DIR="${CLOUD_FORGE_INSTALL_DIR:-${HOME}/.local/bin}"
 VERSION="${CLOUD_FORGE_VERSION:-latest}"
+TMPDIR_CLOUD_FORGE_INSTALL=""
+
+cleanup() {
+  if [[ -n "${TMPDIR_CLOUD_FORGE_INSTALL:-}" ]]; then
+    rm -rf "${TMPDIR_CLOUD_FORGE_INSTALL}"
+  fi
+}
 
 usage() {
   cat <<EOF
 Cloud Forge CLI installer
 
 Usage:
-  curl -fsSL https://cdn.jsdelivr.net/gh/${REPO}@main/scripts/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/scripts/install.sh | bash
   CLOUD_FORGE_VERSION=v0.2.0 bash install.sh
 
 Environment:
@@ -70,7 +77,7 @@ main() {
   need_cmd tar
   need_cmd install
 
-  local platform resolved_version archive_name download_url tmpdir
+  local platform resolved_version archive_name download_url
   platform="$(detect_platform)"
   resolved_version="$(resolve_version)"
   if [[ -z "${resolved_version}" ]]; then
@@ -82,15 +89,15 @@ main() {
   archive_name="cloud-forge_${version_tag}_${platform}.tar.gz"
   download_url="https://github.com/${REPO}/releases/download/${resolved_version}/${archive_name}"
 
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "${tmpdir}"' EXIT
+  TMPDIR_CLOUD_FORGE_INSTALL="$(mktemp -d)"
+  trap cleanup EXIT
 
   echo "Installing cloud-forge ${resolved_version} for ${platform}"
-  curl -fsSL "${download_url}" -o "${tmpdir}/${archive_name}"
-  tar -xzf "${tmpdir}/${archive_name}" -C "${tmpdir}"
+  curl -fsSL "${download_url}" -o "${TMPDIR_CLOUD_FORGE_INSTALL}/${archive_name}"
+  tar -xzf "${TMPDIR_CLOUD_FORGE_INSTALL}/${archive_name}" -C "${TMPDIR_CLOUD_FORGE_INSTALL}"
 
   mkdir -p "${INSTALL_DIR}"
-  install -m 0755 "${tmpdir}/cloud-forge" "${INSTALL_DIR}/cloud-forge"
+  install -m 0755 "${TMPDIR_CLOUD_FORGE_INSTALL}/cloud-forge" "${INSTALL_DIR}/cloud-forge"
 
   echo "Installed cloud-forge to ${INSTALL_DIR}/cloud-forge"
   if ! echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then

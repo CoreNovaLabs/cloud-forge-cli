@@ -32,7 +32,7 @@
 </p>
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
 cloud-forge auth aws
 cloud-forge deploy hello-nginx --cloud aws
 ```
@@ -60,10 +60,10 @@ Default regions: AWS `us-east-1`, Aliyun `cn-hongkong` (override with `--region`
 
 The one-liner above installs `cloud-forge` into `~/.local/bin`. Add that directory to your `PATH` if your shell cannot find the command.
 
-If the CDN is unavailable in your network, use the GitHub raw URL instead:
+If GitHub raw is unavailable in your network, use the jsDelivr CDN mirror instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CoreNovaLabs/cloud-forge-cli/main/scripts/install.sh | bash
+curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash
 ```
 
 Manual install from [GitHub Releases](https://github.com/CoreNovaLabs/cloud-forge-cli/releases): unpack the archive and move the binary to a directory on your `PATH`.
