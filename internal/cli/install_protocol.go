@@ -68,14 +68,7 @@ func installProtocolDarwin(exe string) error {
 		return err
 	}
 
-	script := fmt.Sprintf(`on open location this_URL
-  set cliPath to %s
-  tell application "Terminal"
-    activate
-    do script quoted form of cliPath & " launch-url " & quoted form of this_URL
-  end tell
-end open location
-`, appleScriptString(exe))
+	script := darwinProtocolScript(exe)
 	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
 		return err
 	}
@@ -157,6 +150,29 @@ func cloudForgeProtocolDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".cloud-forge", "protocol"), nil
+}
+
+func darwinProtocolScript(exe string) string {
+	return fmt.Sprintf(`on open location this_URL
+  set cliPath to %s
+  set launchDir to (POSIX path of (path to temporary items)) & "cloud-forge-launches"
+  do shell script "mkdir -p " & quoted form of launchDir
+  set scriptPath to launchDir & "/cloud-forge-" & (do shell script "uuidgen") & ".command"
+  set commandText to "#!/bin/zsh" & linefeed & "exec " & quoted form of cliPath & " launch-url " & quoted form of this_URL & linefeed
+  set fileRef to open for access POSIX file scriptPath with write permission
+  try
+    set eof fileRef to 0
+    write commandText to fileRef
+  on error errMsg number errNum
+    try
+      close access fileRef
+    end try
+    error errMsg number errNum
+  end try
+  close access fileRef
+  do shell script "chmod +x " & quoted form of scriptPath & " && open -a Terminal " & quoted form of scriptPath
+end open location
+`, appleScriptString(exe))
 }
 
 const plistBuddyPath = "/usr/libexec/PlistBuddy"

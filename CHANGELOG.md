@@ -4,6 +4,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-06
+
+### Fixed
+
+- macOS browser launch now opens a temporary `.command` file in Terminal instead of controlling Terminal through AppleScript automation permissions.
+
 ## [0.3.4] - 2026-07-06
 
 ### Added

@@ -19,7 +19,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.4"
+var Version = "0.3.5"
 
 const (
 	defaultAWSRegion        = "us-east-1"
