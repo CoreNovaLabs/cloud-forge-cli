@@ -129,6 +129,14 @@ func runAliyunDeploy(ctx context.Context, args []string, stdout, stderr io.Write
 		printUserError(stderr, err)
 		return 1
 	}
+	if err := requireCompatibleCLI(app); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",
+			Status: "failed", DurationMS: durationMS(started), ErrorCode: "cli_version",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
 	if !contains(app.Clouds, "aliyun") {
 		track(common, ctx, telemetry.Event{
 			Event: "deploy", AppID: app.ID, AppVersion: app.Version, Cloud: "aliyun",

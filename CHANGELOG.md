@@ -4,6 +4,18 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-06
+
+### Added
+
+- Browser launcher deep-link support via `cloud-forge launch-url` and `cloud-forge install-protocol`
+- Catalog `min_cli_version` enforcement before template fetch or deploy
+
+### Fixed
+
+- Scope index and template caches by catalog URL so `--store-url` and `CLOUD_FORGE_STORE_URL` cannot reuse stale default catalog data
+- `show --cloud` now filters parameter required/default/option display to the selected cloud
+
 ## [0.3.3] - 2026-07-05
 
 ### Added

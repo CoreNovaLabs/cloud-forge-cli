@@ -200,6 +200,137 @@ func TestHTTPStore_ZeroCacheTTLForcesRefresh(t *testing.T) {
 	}
 }
 
+func TestHTTPStore_IndexCacheIsScopedByURL(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	firstRoot := t.TempDir()
+	secondRoot := t.TempDir()
+	firstIndex := filepath.Join(firstRoot, "index", "apps.json")
+	secondIndex := filepath.Join(secondRoot, "index", "apps.json")
+
+	writeFile(t, firstIndex, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "First Store", "description": "test"},
+  "apps": [{
+    "id": "gitea",
+    "name": "Gitea",
+    "desc": "Git hosting",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/gitea/templates/aws.yaml"}}
+  }]
+}`)
+	writeFile(t, secondIndex, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "Second Store", "description": "test"},
+  "apps": [{
+    "id": "freshrss",
+    "name": "FreshRSS",
+    "desc": "RSS reader",
+    "category": "cms",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/freshrss/templates/aws.yaml"}}
+  }]
+}`)
+
+	first := store.NewHTTPStore(store.Config{
+		IndexURL: fileURL(firstIndex),
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := first.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	second := store.NewHTTPStore(store.Config{
+		IndexURL: fileURL(secondIndex),
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := second.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	apps, err := second.List(store.Filter{Query: "freshrss"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0].ID != "freshrss" {
+		t.Fatalf("expected second index URL to use its own cache entry, got %#v", apps)
+	}
+}
+
+func TestHTTPStore_TemplateCacheIsScopedByURL(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	firstRoot := t.TempDir()
+	secondRoot := t.TempDir()
+	firstIndex := filepath.Join(firstRoot, "index", "apps.json")
+	secondIndex := filepath.Join(secondRoot, "index", "apps.json")
+	firstTemplate := filepath.Join(firstRoot, "apps", "gitea", "templates", "aws.yaml")
+	secondTemplate := filepath.Join(secondRoot, "apps", "gitea", "templates", "aws.yaml")
+
+	writeFile(t, firstTemplate, "Resources:\n  First: {}\n")
+	writeFile(t, secondTemplate, "Resources:\n  Second: {}\n")
+	writeFile(t, firstIndex, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "First Store", "description": "test"},
+  "apps": [{
+    "id": "gitea",
+    "name": "Gitea",
+    "desc": "Git hosting",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/gitea/templates/aws.yaml"}}
+  }]
+}`)
+	writeFile(t, secondIndex, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "store": {"name": "Second Store", "description": "test"},
+  "apps": [{
+    "id": "gitea",
+    "name": "Gitea",
+    "desc": "Git hosting",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/gitea/templates/aws.yaml"}}
+  }]
+}`)
+
+	first := store.NewHTTPStore(store.Config{
+		IndexURL: fileURL(firstIndex),
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := first.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if body, err := first.GetTemplate(context.Background(), "gitea", "aws"); err != nil || body != "Resources:\n  First: {}\n" {
+		t.Fatalf("unexpected first template body=%q err=%v", body, err)
+	}
+
+	second := store.NewHTTPStore(store.Config{
+		IndexURL: fileURL(secondIndex),
+		CacheDir: cacheDir,
+		CacheTTL: time.Hour,
+	})
+	if err := second.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if body, err := second.GetTemplate(context.Background(), "gitea", "aws"); err != nil || body != "Resources:\n  Second: {}\n" {
+		t.Fatalf("expected second index URL to use its own template cache, body=%q err=%v", body, err)
+	}
+}
+
 func TestHTTPStore_RefreshOnSearchMiss(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -215,6 +215,70 @@ func TestShowPrintsCostNotice(t *testing.T) {
 	}
 }
 
+func TestShowFiltersParametersByCloud(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeDualCloudTestCatalog(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"show",
+		"mariadb",
+		"--cloud",
+		"aws",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+	}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, unexpected := range []string{"KeyPairName", "VSwitchId"} {
+		if strings.Contains(out, unexpected) {
+			t.Fatalf("expected aws show output to omit %s, got: %s", unexpected, out)
+		}
+	}
+	if !strings.Contains(out, "VpcId            optional") {
+		t.Fatalf("expected aws VpcId to be optional, got: %s", out)
+	}
+	if !strings.Contains(out, "LatestAmiId      optional") {
+		t.Fatalf("expected aws-only LatestAmiId to be shown, got: %s", out)
+	}
+}
+
+func TestTemplateRejectsAppRequiringNewerCLI(t *testing.T) {
+	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
+	indexPath := writeMinCLITestCatalog(t, "0.3.4")
+	oldVersion := Version
+	Version = "0.3.3"
+	t.Cleanup(func() {
+		Version = oldVersion
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		"template",
+		"newer-app",
+		"--cloud",
+		"aws",
+		"--store-url",
+		fileURL(indexPath),
+		"--cache-dir",
+		t.TempDir(),
+	}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `app "newer-app" requires cloud-forge CLI >= 0.3.4`) {
+		t.Fatalf("expected min CLI error, got: %s", stderr.String())
+	}
+}
+
 func TestDeployAWSUsesCatalogTemplateAndParameters(t *testing.T) {
 	t.Setenv("CLOUD_FORGE_TELEMETRY", "0")
 	indexPath := writeTestCatalog(t)
@@ -1367,6 +1431,74 @@ func writeTestCatalog(t *testing.T) string {
     }
   }]
 }`)
+	return indexPath
+}
+
+func writeDualCloudTestCatalog(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "apps", "mariadb", "templates", "aws.yaml"), "Resources: {}\n")
+	writeFile(t, filepath.Join(root, "apps", "mariadb", "templates", "aliyun.json"), `{"Resources": {}}`)
+	indexPath := filepath.Join(root, "index", "apps.json")
+	writeFile(t, indexPath, `{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "base_url": "https://example.invalid/catalog",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": "mariadb",
+    "name": "MariaDB",
+    "desc": "database",
+    "category": "database",
+    "clouds": ["aws", "aliyun"],
+    "version": "1.0.0",
+    "min_cli_version": "0.3.0",
+    "ami_role": "db",
+    "service_port": 3306,
+    "images": {
+      "aws": "ami-0123456789abcdef0",
+      "aliyun": "aliyun_3_x64_20G_alibase_20260122.vhd"
+    },
+    "templates": {
+      "aws": {"path": "apps/mariadb/templates/aws.yaml"},
+      "aliyun": {"path": "apps/mariadb/templates/aliyun.json"}
+    },
+    "params": {
+      "LatestAmiId": {"type": "string", "aws": {"default": "ami-0123456789abcdef0"}},
+      "ImageId": {"type": "string", "aliyun": {"default": "aliyun_3_x64_20G_alibase_20260122.vhd"}},
+      "VpcId": {"type": "string", "default": "", "aws": {"default": ""}, "aliyun": {"required": true}},
+      "VSwitchId": {"type": "string", "aliyun": {"required": true}},
+      "KeyPairName": {"type": "string", "aliyun": {"required": true}}
+    }
+  }]
+}`)
+	return indexPath
+}
+
+func writeMinCLITestCatalog(t *testing.T, minCLI string) string {
+	t.Helper()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "apps", "newer-app", "templates", "aws.yaml"), "Resources: {}\n")
+	indexPath := filepath.Join(root, "index", "apps.json")
+	writeFile(t, indexPath, fmt.Sprintf(`{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-06-30T00:00:00Z",
+  "base_url": "https://example.invalid/catalog",
+  "store": {"name": "Test Store", "description": "test"},
+  "apps": [{
+    "id": "newer-app",
+    "name": "Newer App",
+    "desc": "requires new CLI",
+    "category": "devtools",
+    "clouds": ["aws"],
+    "version": "1.0.0",
+    "min_cli_version": %q,
+    "images": {"aws": "ami-0123456789abcdef0"},
+    "templates": {"aws": {"path": "apps/newer-app/templates/aws.yaml"}}
+  }]
+}`, minCLI))
 	return indexPath
 }
 

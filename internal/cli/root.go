@@ -19,7 +19,7 @@ import (
 	"github.com/cloud-forge/cli/pkg/store"
 )
 
-var Version = "0.3.3"
+var Version = "0.3.4"
 
 const (
 	defaultAWSRegion        = "us-east-1"
@@ -475,6 +475,19 @@ func runDeploy(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		printUserError(stderr, err)
 		return 1
 	}
+	if err := requireCompatibleCLI(app); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "deploy",
+			AppID:      app.ID,
+			AppVersion: app.Version,
+			Cloud:      common.cloud,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "cli_version",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
 	if !contains(app.Clouds, "aws") {
 		track(common, ctx, telemetry.Event{
 			Event:      "deploy",
@@ -768,6 +781,18 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
+	if err := requireCompatibleCLI(app); err != nil {
+		track(common, ctx, telemetry.Event{
+			Event:      "show",
+			AppID:      app.ID,
+			AppVersion: app.Version,
+			Status:     "failed",
+			DurationMS: durationMS(started),
+			ErrorCode:  "cli_version",
+		})
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
 
 	track(common, ctx, telemetry.Event{
 		Event:      "show",
@@ -811,10 +836,14 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	if len(app.Params) > 0 {
 		fmt.Fprintln(stdout, "\nParameters:")
+		displayCloud := common.cloud
 		for _, name := range sortedKeys(app.Params) {
 			param := app.Params[name]
+			if displayCloud != "" && !paramAppliesToCloud(param, displayCloud) {
+				continue
+			}
 			required := "optional"
-			if param.Required || cloudRequired(param.AWS) || cloudRequired(param.Aliyun) {
+			if paramRequiredForCloud(param, displayCloud) {
 				required = "required"
 			}
 			secret := ""
@@ -822,11 +851,26 @@ func runShow(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 				secret = " secret"
 			}
 			fmt.Fprintf(stdout, "  %-16s %-8s %s%s\n", name, required, param.Type, secret)
-			if def := defaultParamValue(param, "aws"); def != "" {
-				fmt.Fprintf(stdout, "    default (aws): %s\n", def)
+			if displayCloud == "" {
+				if def := defaultParamValue(param, "aws"); def != "" {
+					fmt.Fprintf(stdout, "    default (aws): %s\n", def)
+				}
+				if options := paramOptions(param, "aws"); len(options) > 0 {
+					fmt.Fprintf(stdout, "    options (aws): %s\n", strings.Join(options, ", "))
+				}
+				if def := defaultParamValue(param, "aliyun"); def != "" {
+					fmt.Fprintf(stdout, "    default (aliyun): %s\n", def)
+				}
+				if options := paramOptions(param, "aliyun"); len(options) > 0 {
+					fmt.Fprintf(stdout, "    options (aliyun): %s\n", strings.Join(options, ", "))
+				}
+				continue
 			}
-			if options := paramOptions(param, "aws"); len(options) > 0 {
-				fmt.Fprintf(stdout, "    options (aws): %s\n", strings.Join(options, ", "))
+			if def := defaultParamValue(param, displayCloud); def != "" {
+				fmt.Fprintf(stdout, "    default (%s): %s\n", displayCloud, def)
+			}
+			if options := paramOptions(param, displayCloud); len(options) > 0 {
+				fmt.Fprintf(stdout, "    options (%s): %s\n", displayCloud, strings.Join(options, ", "))
 			}
 		}
 	}
@@ -868,6 +912,21 @@ func runTemplate(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	}
 
 	app, appErr := st.Get(positionals[0])
+	if appErr == nil && app != nil {
+		if err := requireCompatibleCLI(app); err != nil {
+			track(common, ctx, telemetry.Event{
+				Event:      "template_fetch",
+				AppID:      app.ID,
+				AppVersion: app.Version,
+				Cloud:      common.cloud,
+				Status:     "failed",
+				DurationMS: durationMS(started),
+				ErrorCode:  "cli_version",
+			})
+			fmt.Fprintf(stderr, "%v\n", err)
+			return 2
+		}
+	}
 	body, err := st.GetTemplate(ctx, positionals[0], common.cloud)
 	if err != nil {
 		track(common, ctx, telemetry.Event{
@@ -1305,6 +1364,82 @@ func paramAppliesToCloud(definition store.ParamDefinition, cloud string) bool {
 	default:
 		return true
 	}
+}
+
+func paramRequiredForCloud(definition store.ParamDefinition, cloud string) bool {
+	if definition.Required {
+		return true
+	}
+	switch cloud {
+	case "aws":
+		return cloudRequired(definition.AWS)
+	case "aliyun":
+		return cloudRequired(definition.Aliyun)
+	default:
+		return cloudRequired(definition.AWS) || cloudRequired(definition.Aliyun)
+	}
+}
+
+func requireCompatibleCLI(app *store.App) error {
+	if app == nil || strings.TrimSpace(app.MinCLIVersion) == "" {
+		return nil
+	}
+	ok, err := versionAtLeast(Version, app.MinCLIVersion)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	return fmt.Errorf(
+		"app %q requires cloud-forge CLI >= %s (current %s); upgrade with: curl -fsSL https://cdn.jsdelivr.net/gh/CoreNovaLabs/cloud-forge-cli@main/scripts/install.sh | bash",
+		app.ID,
+		app.MinCLIVersion,
+		Version,
+	)
+}
+
+func versionAtLeast(current, minimum string) (bool, error) {
+	cur, err := parseSemver(current)
+	if err != nil {
+		return false, fmt.Errorf("invalid current CLI version %q: %w", current, err)
+	}
+	min, err := parseSemver(minimum)
+	if err != nil {
+		return false, fmt.Errorf("invalid minimum CLI version %q: %w", minimum, err)
+	}
+	for i := 0; i < len(cur); i++ {
+		if cur[i] > min[i] {
+			return true, nil
+		}
+		if cur[i] < min[i] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func parseSemver(value string) ([3]int, error) {
+	var out [3]int
+	normalized := strings.TrimPrefix(strings.TrimSpace(value), "v")
+	if base, _, ok := strings.Cut(normalized, "-"); ok {
+		normalized = base
+	}
+	if base, _, ok := strings.Cut(normalized, "+"); ok {
+		normalized = base
+	}
+	parts := strings.Split(normalized, ".")
+	if len(parts) != 3 {
+		return out, fmt.Errorf("expected major.minor.patch")
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return out, fmt.Errorf("invalid numeric component %q", part)
+		}
+		out[i] = n
+	}
+	return out, nil
 }
 
 func scalarString(value interface{}) string {

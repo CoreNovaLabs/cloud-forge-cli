@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -279,7 +281,7 @@ func (s *HTTPStore) indexCachePath() string {
 		home, _ := os.UserHomeDir()
 		dir = filepath.Join(home, ".cloud-forge", "cache")
 	}
-	return filepath.Join(dir, "index", "apps.json")
+	return filepath.Join(dir, "index", s.cacheKey(), "apps.json")
 }
 
 func (s *HTTPStore) templateCachePath(appID, cloud string) string {
@@ -292,7 +294,12 @@ func (s *HTTPStore) templateCachePath(appID, cloud string) string {
 	if cloud == "aliyun" {
 		ext = "json"
 	}
-	return filepath.Join(dir, "templates", appID, cloud+"."+ext)
+	return filepath.Join(dir, "templates", s.cacheKey(), appID, cloud+"."+ext)
+}
+
+func (s *HTTPStore) cacheKey() string {
+	sum := sha256.Sum256([]byte(s.cfg.IndexURL))
+	return hex.EncodeToString(sum[:8])
 }
 
 func (s *HTTPStore) isCacheStale(path string) bool {
