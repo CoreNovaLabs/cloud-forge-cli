@@ -30,6 +30,24 @@ Environment:
 EOF
 }
 
+download_file() {
+  local url="$1"
+  local output="$2"
+  local attempt max_attempts
+  max_attempts=5
+
+  for attempt in $(seq 1 "${max_attempts}"); do
+    if curl --http1.1 -fsSL --connect-timeout 20 --max-time 300 "${url}" -o "${output}"; then
+      return 0
+    fi
+    if [[ "${attempt}" -lt "${max_attempts}" ]]; then
+      echo "Download failed; retrying (${attempt}/${max_attempts})..." >&2
+      sleep $((attempt * 2))
+    fi
+  done
+  return 1
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -96,7 +114,7 @@ main() {
   trap cleanup EXIT
 
   echo "Installing cloud-forge ${resolved_version} for ${platform}"
-  curl -fsSL "${download_url}" -o "${TMPDIR_CLOUD_FORGE_INSTALL}/${archive_name}"
+  download_file "${download_url}" "${TMPDIR_CLOUD_FORGE_INSTALL}/${archive_name}"
   tar -xzf "${TMPDIR_CLOUD_FORGE_INSTALL}/${archive_name}" -C "${TMPDIR_CLOUD_FORGE_INSTALL}"
 
   mkdir -p "${INSTALL_DIR}"

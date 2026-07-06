@@ -67,6 +67,27 @@ function Add-InstallDirToUserPath {
   }
 }
 
+function Invoke-CloudForgeDownload {
+  param([string]$Uri, [string]$OutFile)
+
+  $maxAttempts = 5
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers @{
+        "User-Agent" = "cloud-forge-installer"
+      }
+      return
+    }
+    catch {
+      if ($attempt -ge $maxAttempts) {
+        throw
+      }
+      Write-Warning "Download failed; retrying ($attempt/$maxAttempts): $($_.Exception.Message)"
+      Start-Sleep -Seconds ([Math]::Min(10, $attempt * 2))
+    }
+  }
+}
+
 $resolvedVersion = Resolve-CloudForgeVersion -RequestedVersion $Version -Repository $Repo
 if ([string]::IsNullOrWhiteSpace($resolvedVersion)) {
   throw "Could not resolve latest release for $Repo"
@@ -84,9 +105,7 @@ try {
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
   Write-Host "Installing cloud-forge $resolvedVersion for windows_$arch"
-  Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath -Headers @{
-    "User-Agent" = "cloud-forge-installer"
-  }
+  Invoke-CloudForgeDownload -Uri $downloadUrl -OutFile $archivePath
   Expand-Archive -Path $archivePath -DestinationPath $tempDir -Force
 
   $sourceExe = Join-Path $tempDir "cloud-forge.exe"

@@ -4,6 +4,12 @@ All notable changes to Cloud Forge CLI are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-07-06
+
+### Fixed
+
+- Bash and PowerShell installers now retry release downloads; the Bash installer uses HTTP/1.1 for GitHub release assets to avoid HTTP/2 framing failures on some networks.
+
 ## [0.3.11] - 2026-07-06
 
 ### Fixed
